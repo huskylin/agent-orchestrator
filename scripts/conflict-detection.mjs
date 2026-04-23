@@ -143,7 +143,15 @@ function buildWaves(specs) {
       const remaining = specs
         .filter((s) => !assigned.has(s.task_id ?? s.file))
         .map((s) => s.task_id ?? s.file);
+      const cyclePath = join(specsDir, "cycle-report.json");
+      writeFileSync(cyclePath, JSON.stringify({
+        detectedAt: new Date().toISOString(),
+        affectedTasks: remaining,
+        resolution:
+          "存在循環依賴或無法解析的 blocked_by，請人工修正 spec 的 blocked_by 欄位，確保依賴關係形成有向無環圖（DAG）。",
+      }, null, 2) + "\n");
       console.error(`[conflict-detection] circular/unresolvable deps: ${remaining.join(", ")}`);
+      console.error(`[conflict-detection] 詳細報告已寫入 ${cyclePath}`);
       process.exit(2);
     }
 
@@ -231,6 +239,17 @@ if (conflicts.length > 0) {
   for (const { a, b, overlap } of conflicts) {
     console.error(`  ${a} ↔ ${b}: ${overlap.join(", ")}`);
   }
+
+  const reportPath = join(specsDir, "conflict-report.json");
+  const report = {
+    detectedAt: new Date().toISOString(),
+    conflicts: conflicts.map(({ a, b, overlap }) => ({ a, b, overlap })),
+    resolution:
+      "請修改衝突 spec 的 files_to_touch，確保每個檔案只屬於一個 issue，" +
+      "或在較後執行的 issue spec 加入 blocked_by 依賴關係讓其串行執行。",
+  };
+  writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
+  console.error(`[conflict-detection] 詳細報告已寫入 ${reportPath}`);
   process.exit(1);
 }
 
