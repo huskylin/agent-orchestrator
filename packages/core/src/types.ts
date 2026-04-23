@@ -1166,11 +1166,14 @@ export interface ReactionConfig {
   /** Whether this reaction is enabled */
   auto: boolean;
 
-  /** What to do: send message to agent, notify human, auto-merge */
-  action: "send-to-agent" | "notify" | "auto-merge";
+  /** What to do: send message to agent, notify human, auto-merge, or run a shell command */
+  action: "send-to-agent" | "notify" | "auto-merge" | "command";
 
   /** Message to send (for send-to-agent) */
   message?: string;
+
+  /** Shell command to execute (for command action) */
+  command?: string;
 
   /** Priority for notifications */
   priority?: EventPriority;

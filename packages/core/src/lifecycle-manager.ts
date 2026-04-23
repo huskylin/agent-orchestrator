@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { exec } from "node:child_process";
 import {
   SESSION_STATUS,
   ACTIVITY_STATE,
@@ -1025,6 +1026,24 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           reactionType: reactionKey,
           success: true,
           action: "auto-merge",
+          escalated: false,
+        };
+      }
+
+      case "command": {
+        if (!reactionConfig.command) break;
+        const cmd = reactionConfig.command;
+        const success = await new Promise<boolean>((resolve) => {
+          exec(cmd, { cwd: process.cwd() }, (err, stdout, stderr) => {
+            if (stdout) console.log(`[reaction:${reactionKey}] stdout:`, stdout.trim());
+            if (stderr) console.error(`[reaction:${reactionKey}] stderr:`, stderr.trim());
+            resolve(!err);
+          });
+        });
+        return {
+          reactionType: reactionKey,
+          success,
+          action: "command",
           escalated: false,
         };
       }
@@ -2050,6 +2069,20 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             if (reactionConfig.auto !== false || reactionConfig.action === "notify") {
               await executeReaction("system", "all", reactionKey, reactionConfig as ReactionConfig);
             }
+          }
+        }
+
+        // Execute spec-phase-complete reaction if ALL finished sessions are spec sessions
+        const specPhaseReactionConfig = config.reactions["spec-phase-complete"];
+        if (specPhaseReactionConfig && specPhaseReactionConfig.action) {
+          const allAreSpec = sessions.every((s) => s.metadata?.sessionType === "spec");
+          if (allAreSpec) {
+            await executeReaction(
+              "system",
+              "all",
+              "spec-phase-complete",
+              specPhaseReactionConfig as ReactionConfig,
+            );
           }
         }
       }
