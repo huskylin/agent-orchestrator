@@ -1391,6 +1391,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         opencodeSessionId: reusedOpenCodeSessionId,
         userPrompt: spawnConfig.prompt,
         displayName,
+        sessionType: spawnConfig.sessionType,
       });
 
       if (plugins.agent.postLaunchSetup) {
@@ -1482,6 +1483,23 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     if (session.metadata["promptDelivered"]) {
       updateMetadata(sessionsDir, sessionId, session.metadata);
       invalidateCache();
+    }
+
+    // Notify tracker that issue is now in progress
+    if (spawnConfig.issueId && plugins.tracker?.updateIssue) {
+      try {
+        await plugins.tracker.updateIssue(
+          spawnConfig.issueId,
+          {
+            labels: ["agent:in-progress"],
+            removeLabels: ["agent:backlog"],
+            comment: "Session spawned — issue now in progress.",
+          },
+          project,
+        );
+      } catch {
+        /* best effort — tracker update is non-fatal */
+      }
     }
 
     return session;

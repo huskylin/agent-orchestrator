@@ -30,6 +30,7 @@ import {
   type Runtime,
   type Agent,
   type SCM,
+  type Tracker,
   type Notifier,
   type Session,
   type CanonicalSessionLifecycle,
@@ -1852,6 +1853,40 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           },
         });
         await notifyHuman(prEvent, inferPriority(prEventType));
+      }
+    }
+
+    // Sync PR link and summary to Jira when PR is first opened
+    if (newStatus === "pr_open" && oldStatus !== "pr_open" && session.issueId && session.pr) {
+      const project = config.projects[session.projectId];
+      if (project?.tracker?.plugin) {
+        const issueTracker = registry.get<Tracker>("tracker", project.tracker.plugin);
+        const scm = project.scm?.plugin ? registry.get<SCM>("scm", project.scm.plugin) : null;
+        if (issueTracker?.updateIssue) {
+          try {
+            let prTitle = "";
+            if (scm?.getPRSummary) {
+              try {
+                const summary = await scm.getPRSummary(session.pr);
+                prTitle = summary.title ? `\n*標題*: ${summary.title}` : "";
+              } catch {
+                // Non-fatal: proceed without title
+              }
+            }
+            const prUrl = session.pr.url;
+            const comment =
+              `🔗 *PR 已建立*${prTitle}\n` +
+              `*連結*: ${prUrl}\n` +
+              `*Session*: ${session.id}`;
+            await issueTracker.updateIssue(
+              session.issueId,
+              { labels: ["agent:in-review"], removeLabels: ["agent:in-progress"], comment },
+              project,
+            );
+          } catch {
+            // Non-fatal: Jira sync failure should not affect lifecycle
+          }
+        }
       }
     }
 

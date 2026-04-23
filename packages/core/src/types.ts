@@ -376,6 +376,8 @@ export interface SessionSpawnConfig {
   agent?: string;
   /** Override the OpenCode subagent for this session (e.g. "sisyphus", "oracle") */
   subagent?: string;
+  /** Session type for pipeline stage tracking (e.g. "spec", "impl") */
+  sessionType?: string;
 }
 
 /** Config for creating an orchestrator session */
@@ -1664,6 +1666,7 @@ export interface SessionMetadata {
    * even when PR/issue enrichment is unavailable.
    */
   displayName?: string;
+  sessionType?: string; // Pipeline stage: "spec" or "impl"
 }
 
 // =============================================================================
