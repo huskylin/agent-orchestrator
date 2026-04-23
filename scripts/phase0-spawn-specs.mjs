@@ -1,7 +1,17 @@
 #!/usr/bin/env node
 // Phase 0: 從 Jira 讀取 issues，批量 spawn spec sessions
-// 用法：node scripts/phase0-spawn-specs.mjs --jira-project MOPFREQ --jira-url https://... --ao-project paradise-soft
-// 環境變數：JIRA_EMAIL, JIRA_API_TOKEN
+//
+// 用法：node scripts/phase0-spawn-specs.mjs \
+//         --jira-project MOPFREQ \
+//         --jira-url https://jira.yourcompany.com \
+//         --ao-project paradise-soft \
+//         [--sprint current]       # 預設：只抓當前 sprint（openSprints）
+//                                  # --sprint "Sprint 5" 指定 sprint 名稱
+//                                  # --sprint all        不篩選 sprint（抓所有 open）
+//         [--jql "..."]            # 完全覆寫 JQL（優先於 --sprint）
+//         [--dry-run]
+//
+// 環境變數（與 tracker-jira plugin 相同）：JIRA_EMAIL, JIRA_TOKEN
 
 import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -20,8 +30,9 @@ const { values: args } = parseArgs({
     "jira-project": { type: "string" },
     "jira-url":     { type: "string" },
     "ao-project":   { type: "string" },
+    "sprint":       { type: "string", default: "current" }, // current | all | "<sprint name>"
     "prompt-file":  { type: "string", default: "" },
-    "jql":          { type: "string", default: "" },
+    "jql":          { type: "string", default: "" },        // 完全覆寫 JQL
     "dry-run":      { type: "boolean", default: false },
     "delay-ms":     { type: "string", default: "3000" },
   },
@@ -77,11 +88,35 @@ function loadPrompt() {
 }
 
 // ---------------------------------------------------------------------------
+// 根據 --sprint 建立 JQL
+// ---------------------------------------------------------------------------
+function buildJql() {
+  // --jql 完全覆寫，優先於一切
+  if (args["jql"]) return args["jql"];
+
+  const base = `project = ${jiraProject} AND statusCategory != Done`;
+
+  const sprint = args["sprint"] ?? "current";
+
+  if (sprint === "current") {
+    // 只抓當前 sprint 的 issues（預設行為）
+    return `${base} AND sprint in openSprints() ORDER BY priority DESC`;
+  }
+
+  if (sprint === "all") {
+    // 不篩 sprint，抓所有 open issues（包含 backlog）
+    return `${base} ORDER BY priority DESC`;
+  }
+
+  // 指定 sprint 名稱，例如 --sprint "Sprint 5"
+  return `${base} AND sprint = "${sprint}" ORDER BY priority DESC`;
+}
+
+// ---------------------------------------------------------------------------
 // Fetch Jira issues
 // ---------------------------------------------------------------------------
 async function fetchIssues() {
-  const jql = args["jql"] ||
-    `project = ${jiraProject} AND statusCategory != Done ORDER BY priority DESC`;
+  const jql = buildJql();
   const cleanBase = jiraUrl.replace(/\/$/, "");
   const url =
     `${cleanBase}/rest/api/2/search` +
@@ -152,6 +187,14 @@ function spawnSpec(issueKey, prompt) {
 const prompt = loadPrompt();
 console.log(`[phase0] 已載入 spec prompt（${prompt.length} 字元）`);
 
+const sprintLabel = (() => {
+  const s = args["sprint"] ?? "current";
+  if (s === "current") return "當前 sprint（openSprints）";
+  if (s === "all")     return "所有 open issues（不篩 sprint）";
+  return `sprint "${s}"`;
+})();
+console.log(`[phase0] 篩選範圍：${sprintLabel}`);
+
 let issues;
 try {
   issues = await fetchIssues();
@@ -160,7 +203,7 @@ try {
   process.exit(1);
 }
 
-console.log(`[phase0] 找到 ${issues.length} 個 issues（${jiraProject}）`);
+console.log(`[phase0] 找到 ${issues.length} 個 issues（${jiraProject} / ${sprintLabel}）`);
 
 if (issues.length === 0) {
   console.log("[phase0] 沒有 issue 需要處理，結束。");
