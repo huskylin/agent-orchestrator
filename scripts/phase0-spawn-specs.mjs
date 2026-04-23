@@ -45,10 +45,10 @@ if (!jiraProject || !jiraUrl || !aoProject) {
 // Jira auth
 // ---------------------------------------------------------------------------
 const email    = process.env.JIRA_EMAIL;
-const apiToken = process.env.JIRA_API_TOKEN;
+const apiToken = process.env.JIRA_TOKEN;
 
 if (!email || !apiToken) {
-  console.error("[phase0] 需要設定環境變數 JIRA_EMAIL 和 JIRA_API_TOKEN");
+  console.error("[phase0] 需要設定環境變數 JIRA_EMAIL 和 JIRA_TOKEN");
   process.exit(1);
 }
 
@@ -82,12 +82,17 @@ function loadPrompt() {
 async function fetchIssues() {
   const jql = args["jql"] ||
     `project = ${jiraProject} AND statusCategory != Done ORDER BY priority DESC`;
+  const cleanBase = jiraUrl.replace(/\/$/, "");
   const url =
-    `${jiraUrl}/rest/api/2/search` +
+    `${cleanBase}/rest/api/2/search` +
     `?jql=${encodeURIComponent(jql)}&maxResults=50&fields=summary,status,issuetype`;
 
   const res = await fetch(url, {
-    headers: { Authorization: authHeader, Accept: "application/json" },
+    headers: {
+      Authorization: authHeader,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
   });
 
   if (!res.ok) {
