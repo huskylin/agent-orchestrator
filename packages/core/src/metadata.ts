@@ -100,6 +100,7 @@ export function readMetadata(dataDir: string, sessionId: SessionId): SessionMeta
     pinnedSummary: raw["pinnedSummary"],
     userPrompt: raw["userPrompt"],
     displayName: raw["displayName"],
+    sessionType: raw["sessionType"],
   };
 }
 
@@ -154,6 +155,7 @@ export function writeMetadata(
   if (metadata.pinnedSummary) data["pinnedSummary"] = metadata.pinnedSummary;
   if (metadata.userPrompt) data["userPrompt"] = metadata.userPrompt;
   if (metadata.displayName) data["displayName"] = metadata.displayName;
+  if (metadata.sessionType) data["sessionType"] = metadata.sessionType;
 
   atomicWriteFileSync(path, serializeMetadata(data));
 }
