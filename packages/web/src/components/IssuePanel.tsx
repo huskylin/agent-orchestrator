@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { TERMINAL_STATUSES } from "@aoagents/ao-core/types";
-import type { SessionStatus } from "@aoagents/ao-core/types";
+import { TERMINAL_STATUSES, type SessionStatus } from "@aoagents/ao-core/types";
 import { useToast } from "./Toast";
 
 interface Issue {
