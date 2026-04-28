@@ -697,6 +697,7 @@ export interface IssueFilters {
   labels?: string[];
   assignee?: string;
   limit?: number;
+  sprint?: "active";
 }
 
 export interface IssueUpdate {
