@@ -147,4 +147,182 @@ describe("IssuePanel", () => {
     // 完成 spawn
     resolveSpawn({ ok: true, json: async () => ({ session: { id: "s1" } }) } as Response);
   });
+
+  it("shows '目前 Sprint' toggle button and re-fetches with sprint=active when clicked", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ issues: ISSUES }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ issues: [ISSUES[0]] }),
+      } as Response);
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    const sprintBtn = screen.getByRole("button", { name: "目前 Sprint" });
+    expect(sprintBtn).toBeInTheDocument();
+
+    fireEvent.click(sprintBtn);
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls.map((c) => c[0] as string);
+      expect(calls.some((url) => url.includes("sprint=active"))).toBe(true);
+    });
+  });
+
+  it("sprint toggle switches label to '所有 Issues' after click", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ issues: ISSUES }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ issues: ISSUES }) } as Response);
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "目前 Sprint" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "所有 Issues" })).toBeInTheDocument();
+    });
+  });
+
+  it("checking a row checkbox shows bulk spawn button", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ issues: ISSUES }),
+    } as Response);
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    expect(screen.queryByRole("button", { name: /spawn 選取的/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "選取 WIN-1" }));
+
+    expect(screen.getByRole("button", { name: /spawn 選取的 \(1\)/i })).toBeInTheDocument();
+  });
+
+  it("select-all checkbox selects all issues", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ issues: ISSUES }),
+    } as Response);
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全選" }));
+
+    const checked = screen.getAllByRole("checkbox").filter(
+      (cb) => (cb as HTMLInputElement).checked,
+    );
+    // 1 select-all + 2 issue row checkboxes = 3
+    expect(checked).toHaveLength(3);
+    expect(screen.getByRole("button", { name: /spawn 選取的 \(2\)/i })).toBeInTheDocument();
+  });
+
+  it("clicking select-all again deselects all", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ issues: ISSUES }),
+    } as Response);
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全選" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "全選" }));
+
+    const checked = screen.getAllByRole("checkbox").filter(
+      (cb) => (cb as HTMLInputElement).checked,
+    );
+    expect(checked).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /spawn 選取的/i })).not.toBeInTheDocument();
+  });
+
+  it("bulk spawns all selected issues sequentially", async () => {
+    const onSpawned = vi.fn();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ issues: ISSUES }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response);
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={onSpawned} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全選" }));
+    fireEvent.click(screen.getByRole("button", { name: /spawn 選取的/i }));
+
+    await waitFor(() => {
+      const spawnCalls = vi.mocked(fetch).mock.calls.filter(
+        (c) => c[0] === "/api/spawn",
+      );
+      expect(spawnCalls).toHaveLength(2);
+      expect(spawnCalls[0][1]).toMatchObject({
+        body: JSON.stringify({ projectId: "paradise-soft", issueId: "WIN-1" }),
+      });
+      expect(spawnCalls[1][1]).toMatchObject({
+        body: JSON.stringify({ projectId: "paradise-soft", issueId: "WIN-2" }),
+      });
+      expect(onSpawned).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("stops bulk spawn when 5 active sessions are running", async () => {
+    const onSpawned = vi.fn();
+    const activeSessions = Array.from({ length: 5 }, (_, i) => ({
+      id: `s${i}`,
+      status: "working",
+    }));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ issues: ISSUES }) } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ sessions: activeSessions }),
+      } as Response);
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={onSpawned} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全選" }));
+    fireEvent.click(screen.getByRole("button", { name: /spawn 選取的/i }));
+
+    await waitFor(() => {
+      const spawnCalls = vi.mocked(fetch).mock.calls.filter(
+        (c) => c[0] === "/api/spawn",
+      );
+      expect(spawnCalls).toHaveLength(0);
+      expect(onSpawned).not.toHaveBeenCalled();
+    });
+  });
+
+  it("individual Spawn buttons are disabled during bulk spawn", async () => {
+    let resolveBulkSpawn!: (v: Response) => void;
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ issues: ISSUES }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [] }) } as Response)
+      .mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          resolveBulkSpawn = resolve;
+        }),
+      );
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "選取 WIN-1" }));
+    fireEvent.click(screen.getByRole("button", { name: /spawn 選取的/i }));
+
+    await waitFor(() => {
+      const spawnButtons = screen.getAllByRole("button", { name: /^spawn win/i });
+      expect(spawnButtons.every((btn) => btn.hasAttribute("disabled"))).toBe(true);
+    });
+
+    resolveBulkSpawn({ ok: true, json: async () => ({}) } as Response);
+  });
 });
