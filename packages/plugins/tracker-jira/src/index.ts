@@ -33,6 +33,7 @@ interface JiraConfig {
   email?: string;
   token?: string;
   project?: string;
+  boardId?: number;
 }
 
 interface JiraIssue {
@@ -79,6 +80,7 @@ function getConfig(project: ProjectConfig): JiraConfig {
     email: tracker.email as string | undefined,
     token: tracker.token as string | undefined,
     project: tracker.project as string | undefined,
+    boardId: typeof tracker.boardId === "number" ? tracker.boardId : undefined,
   };
 }
 
@@ -118,6 +120,40 @@ async function jiraFetch<T>(
   if (res.status === 204) return undefined as T;
 
   return res.json() as Promise<T>;
+}
+
+async function jiraAgileFetch<T>(
+  config: JiraConfig,
+  path: string,
+): Promise<T> {
+  const url = `${config.baseUrl}/rest/agile/1.0${path}`;
+  const res = await fetch(url, {
+    headers: {
+      "Authorization": makeAuthHeader(config),
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Jira Agile API GET ${path} failed (${res.status}): ${body}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+async function getActiveSprintId(config: JiraConfig): Promise<number | null> {
+  if (!config.boardId) return null;
+  try {
+    const result = await jiraAgileFetch<{ values: Array<{ id: number }> }>(
+      config,
+      `/board/${config.boardId}/sprint?state=active`,
+    );
+    return result.values[0]?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function mapStatus(statusCategory: string): Issue["state"] {
@@ -235,6 +271,13 @@ function createJiraTracker(): Tracker {
 
       if (filters.assignee) {
         jqlParts.push(`assignee = "${filters.assignee}"`);
+      }
+
+      if (filters.sprint === "active") {
+        const sprintId = await getActiveSprintId(config);
+        if (sprintId !== null) {
+          jqlParts.push(`sprint = ${sprintId}`);
+        }
       }
 
       const jql = jqlParts.join(" AND ") + " ORDER BY created DESC";

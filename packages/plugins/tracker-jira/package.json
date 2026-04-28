@@ -11,6 +11,6 @@
     }
   },
   "peerDependencies": {
-    "@aoagents/ao-core": "*"
+    "@aoagents/ao-core": "workspace:*"
   }
 }
