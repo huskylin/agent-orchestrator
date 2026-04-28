@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { TERMINAL_STATUSES } from "@aoagents/ao-core/types";
+import type { SessionStatus } from "@aoagents/ao-core/types";
 import { useToast } from "./Toast";
 
 interface Issue {
@@ -16,15 +18,6 @@ interface IssuePanelProps {
   projectId: string;
   onSpawned: () => void;
 }
-
-const TERMINAL_STATUSES = new Set([
-  "killed",
-  "terminated",
-  "done",
-  "cleanup",
-  "errored",
-  "merged",
-]);
 
 export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -110,47 +103,50 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
     let spawnedCount = 0;
     const idsToSpawn = [...selectedIds];
 
-    for (const id of idsToSpawn) {
-      try {
-        const sessionsRes = await fetch("/api/sessions");
-        const sessionsData = (await sessionsRes.json()) as {
-          sessions?: Array<{ status: string }>;
-        };
-        const activeCount = (sessionsData.sessions ?? []).filter(
-          (s) => !TERMINAL_STATUSES.has(s.status),
-        ).length;
-        if (activeCount >= 5) {
-          showToast(`已達上限，已 spawn ${spawnedCount} 個`, "info");
-          break;
+    try {
+      for (const id of idsToSpawn) {
+        try {
+          const sessionsRes = await fetch("/api/sessions");
+          const sessionsData = (await sessionsRes.json()) as {
+            sessions?: Array<{ status: string }>;
+          };
+          const activeCount = (sessionsData.sessions ?? []).filter(
+            (s) => !TERMINAL_STATUSES.has(s.status as SessionStatus),
+          ).length;
+          if (activeCount >= 5) {
+            showToast(`已達上限，已 spawn ${spawnedCount} 個`, "info");
+            break;
+          }
+        } catch {
+          // If session check fails, proceed optimistically
         }
-      } catch {
-        // If session check fails, proceed optimistically
-      }
 
-      try {
-        const res = await fetch("/api/spawn", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, issueId: id }),
-        });
-        if (!res.ok) {
-          const data = (await res.json()) as { error?: string };
+        try {
+          const res = await fetch("/api/spawn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, issueId: id }),
+          });
+          if (!res.ok) {
+            const data = (await res.json()) as { error?: string };
+            setSpawnErrors((prev) => ({
+              ...prev,
+              [id]: data.error ?? "Failed to spawn",
+            }));
+          } else {
+            spawnedCount++;
+          }
+        } catch (err) {
           setSpawnErrors((prev) => ({
             ...prev,
-            [id]: data.error ?? "Failed to spawn",
+            [id]: err instanceof Error ? err.message : "Failed to spawn",
           }));
-        } else {
-          spawnedCount++;
         }
-      } catch (err) {
-        setSpawnErrors((prev) => ({
-          ...prev,
-          [id]: err instanceof Error ? err.message : "Failed to spawn",
-        }));
       }
+    } finally {
+      setIsBulkSpawning(false);
     }
 
-    setIsBulkSpawning(false);
     if (spawnedCount > 0) {
       showToast(`已 spawn ${spawnedCount} 個 issue`, "success");
       onSpawned();
@@ -170,18 +166,35 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
     );
   }
 
+  // Sprint toggle shown in error/empty so user can switch back to all issues
+  const sprintToggle = (
+    <button
+      type="button"
+      className="issue-panel__sprint-toggle"
+      onClick={() => setSprintOnly((v) => !v)}
+    >
+      {sprintOnly ? "所有 Issues" : "目前 Sprint"}
+    </button>
+  );
+
   if (error) {
     return (
-      <div className="issue-panel issue-panel--empty">
-        <p className="issue-panel__error">{error}</p>
+      <div className="issue-panel">
+        <div className="issue-panel__toolbar">{sprintToggle}</div>
+        <div className="issue-panel--empty">
+          <p className="issue-panel__error">{error}</p>
+        </div>
       </div>
     );
   }
 
   if (issues.length === 0) {
     return (
-      <div className="issue-panel issue-panel--empty">
-        <p className="issue-panel__empty">No open issues found.</p>
+      <div className="issue-panel">
+        <div className="issue-panel__toolbar">{sprintToggle}</div>
+        <div className="issue-panel--empty">
+          <p className="issue-panel__empty">No open issues found.</p>
+        </div>
       </div>
     );
   }
