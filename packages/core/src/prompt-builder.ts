@@ -56,6 +56,22 @@ Rules:
 - If the repo has CI checks, make sure they pass before requesting review.
 - Respond to every review comment, even if just to acknowledge it.`;
 
+/**
+ * Minimal base prompt for spec-only sessions.
+ * Deliberately omits all PR/CI/review workflow so agentRules don't override the
+ * "no PR" contract embedded in the userPrompt.
+ */
+export const BASE_SPEC_PROMPT = `You are a specification agent managed by the Agent Orchestrator (ao).
+
+## Your Role
+You are in SPEC-ONLY mode. Your sole job is to analyse the codebase and produce a spec document.
+You must NOT create pull requests, run tests, or modify any files outside the specs/ directory.
+
+## Reporting Progress to AO
+- \`ao acknowledge\` — run once after reading the task.
+- \`ao report completed\` — run after you push the spec file. This signals AO that your spec phase is done.
+Do NOT run \`ao report pr-created\` — you will not be creating a PR.`;
+
 /** Trimmed base prompt for projects without a configured repo/remote. */
 export const BASE_AGENT_PROMPT_NO_REPO = `You are an AI coding agent managed by the Agent Orchestrator (ao).
 
@@ -94,6 +110,9 @@ export interface PromptBuildConfig {
 
   /** Explicit user prompt (appended last) */
   userPrompt?: string;
+
+  /** Session type — "spec" sessions skip PR/agentRules to prevent unwanted PRs */
+  sessionType?: string;
 }
 
 // =============================================================================
@@ -183,19 +202,27 @@ function readUserRules(project: ProjectConfig): string | null {
  * issue context, user rules, and explicit instructions when available.
  */
 export function buildPrompt(config: PromptBuildConfig): string {
-  const userRules = readUserRules(config.project);
+  const isSpec = config.sessionType === "spec";
   const sections: string[] = [];
 
-  // Layer 1: Base prompt is always included for every managed session.
-  // Use trimmed prompt when no repo is configured (PR/CI instructions don't apply).
-  sections.push(config.project.repo ? BASE_AGENT_PROMPT : BASE_AGENT_PROMPT_NO_REPO);
+  // Layer 1: Base prompt.
+  // Spec sessions use a stripped-down prompt with no PR/CI workflow to prevent
+  // agentRules from inadvertently overriding the "no PR" contract.
+  if (isSpec) {
+    sections.push(BASE_SPEC_PROMPT);
+  } else {
+    sections.push(config.project.repo ? BASE_AGENT_PROMPT : BASE_AGENT_PROMPT_NO_REPO);
+  }
 
   // Layer 2: Config-derived context
   sections.push(buildConfigLayer(config));
 
-  // Layer 3: User rules
-  if (userRules) {
-    sections.push(`## Project Rules\n${userRules}`);
+  // Layer 3: User rules — skipped for spec sessions to avoid PR-triggering rules
+  if (!isSpec) {
+    const userRules = readUserRules(config.project);
+    if (userRules) {
+      sections.push(`## Project Rules\n${userRules}`);
+    }
   }
 
   // Explicit user prompt (appended last, highest priority)

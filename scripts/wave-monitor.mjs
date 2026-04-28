@@ -12,10 +12,9 @@
 //   --once               只跑一次（不 loop，用於測試）
 //   --dry-run            不實際 spawn
 
-import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve, join } from "node:path";
+import { resolve, join, basename } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 
@@ -53,26 +52,41 @@ if (!aoProject) {
 // ---------------------------------------------------------------------------
 
 function getSessionsDir() {
-  // Sessions 路徑：~/.agent-orchestrator/<sha256-12char-of-repoPath>/sessions
-  const hash = createHash("sha256").update(repoPath).digest("hex").slice(0, 12);
-  return join(homedir(), ".agent-orchestrator", hash, "sessions");
+  // ~/.agent-orchestrator/<12-char-hash>-<project-dir-name>/sessions
+  const aoDir = join(homedir(), ".agent-orchestrator");
+  const repoDirName = basename(repoPath);
+  let dirs;
+  try {
+    dirs = readdirSync(aoDir);
+  } catch {
+    return null;
+  }
+  const matched = dirs.find(
+    (d) => d.endsWith(`-${repoDirName}`) && existsSync(join(aoDir, d, "sessions")),
+  );
+  return matched ? join(aoDir, matched, "sessions") : null;
 }
 
-function getSessionBranch(sessionId) {
+function getSessionField(sessionId, field) {
   const sessionsDir = getSessionsDir();
-  const metadataPath = join(sessionsDir, sessionId, "metadata");
+  if (!sessionsDir) return null;
+  // Session metadata is a flat key=value file at sessions/<sessionId>
+  const metadataPath = join(sessionsDir, sessionId);
   if (!existsSync(metadataPath)) return null;
 
   const raw = readFileSync(metadataPath, "utf8");
-  // metadata 格式：每行 key=value
   for (const line of raw.split("\n")) {
     const eqIdx = line.indexOf("=");
     if (eqIdx === -1) continue;
     const key = line.slice(0, eqIdx).trim();
     const val = line.slice(eqIdx + 1).trim();
-    if (key === "branch") return val;
+    if (key === field) return val;
   }
   return null;
+}
+
+function getSessionBranch(sessionId) {
+  return getSessionField(sessionId, "branch");
 }
 
 // ---------------------------------------------------------------------------

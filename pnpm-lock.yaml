@@ -562,6 +562,12 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@25.6.0)(jiti@2.6.1)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
 
+  packages/plugins/tracker-jira:
+    dependencies:
+      '@aoagents/ao-core':
+        specifier: '*'
+        version: 0.3.0
+
   packages/plugins/tracker-linear:
     dependencies:
       '@aoagents/ao-core':
@@ -763,6 +769,10 @@ packages:
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
+
+  '@aoagents/ao-core@0.3.0':
+    resolution: {integrity: sha512-MODIRiLv8LnwCT/H4D7SMl1WxG68M4ZlYZbkvMo5A+IhkFGHvxOW0PROcn4jBQ0nWCKlj14732vlaZNId3JyjA==}
+    engines: {node: '>=20.0.0'}
 
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
@@ -4319,6 +4329,11 @@ snapshots:
     dependencies:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
+
+  '@aoagents/ao-core@0.3.0':
+    dependencies:
+      yaml: 2.8.3
+      zod: 3.25.76
 
   '@asamuzakjp/css-color@3.2.0':
     dependencies:

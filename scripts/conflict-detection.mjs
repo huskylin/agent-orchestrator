@@ -42,7 +42,9 @@ function parseFrontMatter(content) {
     // Simple key: value
     const kvMatch = line.match(/^(\w[\w_]*)\s*:\s*(.+)$/);
     if (kvMatch) {
-      result[kvMatch[1]] = kvMatch[2].trim();
+      const val = kvMatch[2].trim();
+      // Handle inline empty array literal: key: []
+      result[kvMatch[1]] = val === "[]" ? [] : val;
       continue;
     }
 

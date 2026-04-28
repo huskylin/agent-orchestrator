@@ -321,6 +321,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let polling = false; // re-entrancy guard
   let allCompleteEmitted = false; // guard against repeated all_complete
+  let specPhaseCompleteEmitted = false; // guard against repeated spec-phase-complete
 
   /**
    * Cache for PR enrichment data within a single poll cycle.
@@ -2072,18 +2073,29 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           }
         }
 
-        // Execute spec-phase-complete reaction if ALL finished sessions are spec sessions
-        const specPhaseReactionConfig = config.reactions["spec-phase-complete"];
-        if (specPhaseReactionConfig && specPhaseReactionConfig.action) {
-          const allAreSpec = sessions.every((s) => s.metadata?.sessionType === "spec");
-          if (allAreSpec) {
-            await executeReaction(
-              "system",
-              "all",
-              "spec-phase-complete",
-              specPhaseReactionConfig as ReactionConfig,
-            );
-          }
+      }
+
+      // Execute spec-phase-complete when ALL sessions are spec sessions and all are done
+      // (terminal, mergeable, or idle — spec agents don't need to be fully merged)
+      const SPEC_DONE_STATUSES = new Set([...TERMINAL_STATUSES, "mergeable", "idle"]);
+      const specActiveCount = sessions.filter((s) => !SPEC_DONE_STATUSES.has(s.status)).length;
+      const specPhaseReactionConfig = config.reactions["spec-phase-complete"];
+      if (
+        specPhaseReactionConfig &&
+        specPhaseReactionConfig.action &&
+        sessions.length > 0 &&
+        specActiveCount === 0 &&
+        !specPhaseCompleteEmitted
+      ) {
+        const allAreSpec = sessions.every((s) => s.metadata?.sessionType === "spec");
+        if (allAreSpec) {
+          specPhaseCompleteEmitted = true;
+          await executeReaction(
+            "system",
+            "all",
+            "spec-phase-complete",
+            specPhaseReactionConfig as ReactionConfig,
+          );
         }
       }
       if (scopedProjectId) {

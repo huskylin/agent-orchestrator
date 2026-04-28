@@ -88,9 +88,12 @@ export function resolveTmuxSession(
       encoding: "utf8",
     }) as string;
     const sessions = output.split("\n").filter(Boolean);
-    const match = sessions.find((s) =>
-      HASH_PREFIX_PATTERN.test(s) && s.substring(13) === sessionId,
-    );
+    const match = sessions.find((s) => {
+      if (!HASH_PREFIX_PATTERN.test(s)) return false;
+      const afterHash = s.substring(13); // skip "xxxxxxxxxxxx-"
+      // Support both "<hash>-<sessionId>" and "<hash>-<project>-<sessionId>"
+      return afterHash === sessionId || afterHash.endsWith(`-${sessionId}`);
+    });
     if (match) {
       return match;
     }
