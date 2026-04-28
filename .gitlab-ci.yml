@@ -4,9 +4,20 @@ stages:
 
 variables:
   HUSKY: "0"
+  NVM_DIR: "${HOME}/.nvm"
+  NODE_VERSION: "20"
 
 before_script:
+  # 安裝 nvm（如果尚未安裝）
+  - |
+    if [ ! -d "${NVM_DIR}" ]; then
+      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+    fi
+  - source "${NVM_DIR}/nvm.sh"
+  - nvm install ${NODE_VERSION}
+  - nvm use ${NODE_VERSION}
   - node --version
+  # 安裝 pnpm
   - export PNPM_HOME="${HOME}/.local/share/pnpm"
   - export PATH="${PNPM_HOME}:${PATH}"
   - curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME="${HOME}/.local/share/pnpm" sh -
@@ -15,12 +26,16 @@ before_script:
 build:
   stage: build
   script:
+    - source "${NVM_DIR}/nvm.sh" && nvm use ${NODE_VERSION}
+    - export PNPM_HOME="${HOME}/.local/share/pnpm" && export PATH="${PNPM_HOME}:${PATH}"
     - pnpm --filter @aoagents/ao-core build
     - pnpm --filter @aoagents/ao-cli build
 
 test:
   stage: test
   script:
+    - source "${NVM_DIR}/nvm.sh" && nvm use ${NODE_VERSION}
+    - export PNPM_HOME="${HOME}/.local/share/pnpm" && export PATH="${PNPM_HOME}:${PATH}"
     - pnpm --filter @aoagents/ao-core test --run
     - pnpm --filter @aoagents/ao-cli test --run
   needs:
