@@ -80,7 +80,11 @@ function getConfig(project: ProjectConfig): JiraConfig {
     email: tracker.email as string | undefined,
     token: tracker.token as string | undefined,
     project: tracker.project as string | undefined,
-    boardId: typeof tracker.boardId === "number" ? tracker.boardId : undefined,
+    boardId: typeof tracker.boardId === "number"
+      ? tracker.boardId
+      : typeof tracker.boardId === "string"
+        ? parseInt(tracker.boardId, 10) || undefined
+        : undefined,
   };
 }
 

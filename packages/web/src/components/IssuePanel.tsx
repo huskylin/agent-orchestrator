@@ -145,6 +145,7 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
       }
     } finally {
       setIsBulkSpawning(false);
+      setSelectedIds(new Set());
     }
 
     if (spawnedCount > 0) {
@@ -156,6 +157,15 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
   if (loading) {
     return (
       <div className="issue-panel">
+        <div className="issue-panel__toolbar">
+          <button
+            type="button"
+            className="issue-panel__sprint-toggle"
+            onClick={() => setSprintOnly((v) => !v)}
+          >
+            {sprintOnly ? "所有 Issues" : "目前 Sprint"}
+          </button>
+        </div>
         {Array.from({ length: 8 }, (_, i) => (
           <div key={i} className="issue-panel__row issue-panel__row--skeleton">
             <div className="issue-panel__skeleton-id" />
