@@ -25,6 +25,7 @@ import { ConnectionBar } from "./ConnectionBar";
 import { CopyDebugBundleButton } from "./CopyDebugBundleButton";
 import { SidebarContext } from "./workspace/SidebarContext";
 import { projectDashboardPath, projectSessionPath } from "@/lib/routes";
+import { IssuePanel } from "./IssuePanel";
 
 interface DashboardProps {
   initialSessions: DashboardSession[];
@@ -176,6 +177,7 @@ function DashboardInner({
   const showSidebar = projects.length >= 1;
   const { showToast } = useToast();
   const [doneExpanded, setDoneExpanded] = useState(false);
+  const [showIssues, setShowIssues] = useState(false);
   const sessionsRef = useRef(sessions);
 
   sessionsRef.current = sessions;
@@ -505,6 +507,16 @@ function DashboardInner({
             {showDebugBundleButton ? <CopyDebugBundleButton projectId={projectId} /> : null}
             <div className="dashboard-app-header__spacer" />
             <div className="dashboard-app-header__actions">
+              {!allProjectsView && projectId ? (
+                <button
+                  type="button"
+                  className="dashboard-app-btn"
+                  aria-label={showIssues ? "Sessions" : "Issues"}
+                  onClick={() => setShowIssues((v) => !v)}
+                >
+                  {showIssues ? "Sessions" : "Issues"}
+                </button>
+              ) : null}
               {!allProjectsView && orchestratorHref ? (
                 <Link
                   href={orchestratorHref}
@@ -632,7 +644,14 @@ function DashboardInner({
                   />
                 )}
 
-                {!allProjectsView && hasAnySessions && (
+                {!allProjectsView && showIssues && projectId ? (
+                  <IssuePanel
+                    projectId={projectId}
+                    onSpawned={() => setShowIssues(false)}
+                  />
+                ) : null}
+
+                {!allProjectsView && !showIssues && hasAnySessions && (
                   <div className="kanban-board-wrap">
                     <div className="kanban-board">
                       {kanbanLevels.map((level) => (
@@ -650,7 +669,7 @@ function DashboardInner({
                   </div>
                 )}
 
-                {showEmptyState ? (
+                {showEmptyState && !showIssues ? (
                   <EmptyState
                     orchestratorHref={orchestratorHref}
                     onSpawnOrchestrator={
@@ -671,7 +690,7 @@ function DashboardInner({
                   </p>
                 ) : null}
 
-                {!allProjectsView && grouped.done.length > 0 && (
+                {!allProjectsView && !showIssues && grouped.done.length > 0 && (
                   <div className="done-bar mt-6">
                     <button
                       type="button"
