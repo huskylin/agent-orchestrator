@@ -2,11 +2,15 @@ stages:
   - build
   - test
 
+variables:
+  HUSKY: "0"
+
 before_script:
+  - node --version
   - export PNPM_HOME="${HOME}/.local/share/pnpm"
   - export PATH="${PNPM_HOME}:${PATH}"
   - curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME="${HOME}/.local/share/pnpm" sh -
-  - pnpm install --frozen-lockfile
+  - pnpm install --frozen-lockfile --ignore-scripts
 
 build:
   stage: build
