@@ -125,33 +125,39 @@ async function jiraFetch<T>(
 async function jiraAgileFetch<T>(
   config: JiraConfig,
   path: string,
+  options: RequestInit = {},
 ): Promise<T> {
   const url = `${config.baseUrl}/rest/agile/1.0${path}`;
   const res = await fetch(url, {
+    ...options,
     headers: {
       "Authorization": makeAuthHeader(config),
       "Content-Type": "application/json",
       "Accept": "application/json",
+      ...(options.headers ?? {}),
     },
   });
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Jira Agile API GET ${path} failed (${res.status}): ${body}`);
+    throw new Error(`Jira Agile API ${options.method ?? "GET"} ${path} failed (${res.status}): ${body}`);
   }
+
+  if (res.status === 204) return undefined as T;
 
   return res.json() as Promise<T>;
 }
 
 async function getActiveSprintId(config: JiraConfig): Promise<number | null> {
-  if (!config.boardId) return null;
+  if (config.boardId === undefined) return null;
   try {
     const result = await jiraAgileFetch<{ values: Array<{ id: number }> }>(
       config,
       `/board/${config.boardId}/sprint?state=active`,
     );
     return result.values[0]?.id ?? null;
-  } catch {
+  } catch (err) {
+    console.warn(`[tracker-jira] Failed to fetch active sprint for board ${config.boardId}:`, err);
     return null;
   }
 }
