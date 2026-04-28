@@ -1,0 +1,22 @@
+stages:
+  - build
+  - test
+
+before_script:
+  - corepack enable
+  - corepack prepare pnpm@9 --activate
+  - pnpm install --frozen-lockfile
+
+build:
+  stage: build
+  script:
+    - pnpm --filter @aoagents/ao-core build
+    - pnpm --filter @aoagents/ao-cli build
+
+test:
+  stage: test
+  script:
+    - pnpm --filter @aoagents/ao-core test --run
+    - pnpm --filter @aoagents/ao-cli test --run
+  needs:
+    - build
