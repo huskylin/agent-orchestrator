@@ -3,8 +3,9 @@ stages:
   - test
 
 before_script:
-  - corepack enable
-  - corepack prepare pnpm@9 --activate
+  - export PNPM_HOME="${HOME}/.local/share/pnpm"
+  - export PATH="${PNPM_HOME}:${PATH}"
+  - curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME="${HOME}/.local/share/pnpm" sh -
   - pnpm install --frozen-lockfile
 
 build:
