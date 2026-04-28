@@ -2,7 +2,7 @@
 // Phase 2 Wave Monitor
 // 輪詢 .claude/tasks/*.json，當前 wave 全 merged 後自動 spawn 下一 wave impl agents
 //
-// 用法：node scripts/wave-monitor.mjs --ao-project paradise-soft --repo-path ~/projects/agent-orchestrator-demo
+// 用法：node scripts/wave-monitor.mjs --ao-project your-project --repo-path ~/projects/your-project
 // 選項：
 //   --ao-project  <id>    AO project ID（對應 agent-orchestrator.yaml 的 key）
 //   --repo-path   <path>  demo 專案路徑（含 .claude/tasks/ 和 specs/）

@@ -72,7 +72,7 @@ function loadPrompt() {
   const candidates = [
     args["prompt-file"],
     resolve(process.cwd(), "prompts/spec-agent.md"),
-    join(homedir(), "projects/agent-orchestrator-demo/prompts/spec-agent.md"),
+    join(__dirname, "..", "prompts", "spec-agent.md"),
   ].filter(Boolean);
 
   for (const p of candidates) {

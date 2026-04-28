@@ -38,6 +38,13 @@
 | 檔案 | 修改內容 |
 |------|---------|
 | `web/server/tmux-utils.ts` | `resolveTmuxSession` 支援 `<hash>-<project>-<sessionId>` 格式（修正 dashboard terminal 空白） |
+| `web/package.json` + `web/src/lib/services.ts` | 在 Web Dashboard 中引入並注冊 `tracker-jira` plugin |
+
+**新增資源**
+
+| 路徑 | 說明 |
+|------|------|
+| `prompts/spec-agent.md` | Spec agent 的 system prompt，由 `phase0-spawn-specs.mjs` 自動載入 |
 
 **自動化腳本（`scripts/`）**
 
@@ -207,6 +214,26 @@ sequenceDiagram
         ImplAgents-->>AO: PR merged
     end
 ```
+
+### 設定
+
+本 repo 同時存放 AO 設定與 spec agent prompt，**demo 專案（被 orchestrate 的 repo）只需包含實際產出的程式碼**。
+
+**`agent-orchestrator.yaml`**（本 repo 根目錄）
+
+描述你的專案清單、agentRules、reactions 等。在 shell profile 設定環境變數，讓 AO 找到它：
+
+```bash
+# ~/.zshrc 或 ~/.bashrc
+export AO_GLOBAL_CONFIG=~/projects/agent-orchestrator/agent-orchestrator.yaml
+```
+
+**`prompts/spec-agent.md`**（本 repo `prompts/` 目錄）
+
+Spec agent 的 system prompt。`phase0-spawn-specs.mjs` 會依序在以下位置尋找：
+1. `--prompt-file <path>`（CLI 參數優先）
+2. 執行目錄下的 `prompts/spec-agent.md`
+3. 腳本所在目錄（`scripts/`）的上一層 `prompts/spec-agent.md`（fallback，即本 repo 的 `prompts/spec-agent.md`）
 
 ### 使用方式
 

@@ -2,7 +2,7 @@
 // gather-specs.mjs
 // 從所有 sessionType=spec 的 session worktree 蒐集 specs/*.md，複製到主 repo 的 specs/ 目錄
 //
-// 用法：node scripts/gather-specs.mjs --repo-path ~/projects/agent-orchestrator-demo
+// 用法：node scripts/gather-specs.mjs --repo-path ~/projects/your-project
 // 選項：
 //   --repo-path  <path>   主 repo 路徑（含 agent-orchestrator.yaml）
 //   --specs-dir  <path>   主 repo 的 specs 目錄（預設 <repo-path>/specs）
