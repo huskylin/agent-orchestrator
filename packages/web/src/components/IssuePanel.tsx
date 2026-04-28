@@ -26,18 +26,23 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
   const { showToast } = useToast();
 
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/issues?state=open&project=${encodeURIComponent(projectId)}`)
+    fetch(`/api/issues?state=open&project=${encodeURIComponent(projectId)}`, {
+      signal: controller.signal,
+    })
       .then((res) => res.json() as Promise<{ issues?: Issue[]; error?: string }>)
       .then((data) => {
         if (data.error) throw new Error(data.error);
         setIssues(data.issues ?? []);
       })
       .catch((err: unknown) => {
+        if (err instanceof Error && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to load issues");
       })
       .finally(() => setLoading(false));
+    return () => controller.abort();
   }, [projectId]);
 
   const handleSpawn = async (issue: Issue) => {
@@ -113,7 +118,7 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
             <button
               type="button"
               className="issue-panel__spawn"
-              aria-label="Spawn"
+              aria-label={`Spawn ${issue.id}`}
               onClick={() => void handleSpawn(issue)}
               disabled={spawning === issue.id}
             >

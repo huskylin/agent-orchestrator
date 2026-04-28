@@ -88,7 +88,7 @@ describe("IssuePanel", () => {
     renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={onSpawned} />);
     await waitFor(() => screen.getByText("WIN-1"));
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Spawn" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /spawn/i })[0]);
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith("/api/spawn", {
@@ -114,10 +114,37 @@ describe("IssuePanel", () => {
     renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
     await waitFor(() => screen.getByText("WIN-1"));
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Spawn" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /spawn/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByText("Session limit reached")).toBeInTheDocument();
     });
+  });
+
+  it("disables Spawn button while spawning is in progress", async () => {
+    let resolveSpawn!: (value: Response) => void;
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ issues: ISSUES }),
+      } as Response)
+      .mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          resolveSpawn = resolve;
+        }),
+      );
+
+    renderWithToast(<IssuePanel projectId="paradise-soft" onSpawned={vi.fn()} />);
+    await waitFor(() => screen.getByText("WIN-1"));
+
+    fireEvent.click(screen.getAllByRole("button", { name: /spawn/i })[0]);
+
+    // 按鈕應在 spawning 期間 disabled
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /spawn/i })[0]).toBeDisabled();
+    });
+
+    // 完成 spawn
+    resolveSpawn({ ok: true, json: async () => ({ session: { id: "s1" } }) } as Response);
   });
 });
