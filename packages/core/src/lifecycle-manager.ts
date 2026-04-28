@@ -1279,9 +1279,9 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           const detailedConfig: ReactionConfig =
             reactionConfig.action === "send-to-agent" && usingDefaultMessage
               ? {
-                  ...reactionConfig,
-                  message: formatAutomatedCommentsMessage(automatedComments, session.pr),
-                }
+                ...reactionConfig,
+                message: formatAutomatedCommentsMessage(automatedComments, session.pr),
+              }
               : reactionConfig;
           const result = await executeReaction(
             session.id,
@@ -2073,29 +2073,18 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           }
         }
 
-      }
-
-      // Execute spec-phase-complete when ALL sessions are spec sessions and all are done
-      // (terminal, mergeable, or idle — spec agents don't need to be fully merged)
-      const SPEC_DONE_STATUSES = new Set([...TERMINAL_STATUSES, "mergeable", "idle"]);
-      const specActiveCount = sessions.filter((s) => !SPEC_DONE_STATUSES.has(s.status)).length;
-      const specPhaseReactionConfig = config.reactions["spec-phase-complete"];
-      if (
-        specPhaseReactionConfig &&
-        specPhaseReactionConfig.action &&
-        sessions.length > 0 &&
-        specActiveCount === 0 &&
-        !specPhaseCompleteEmitted
-      ) {
-        const allAreSpec = sessions.every((s) => s.metadata?.sessionType === "spec");
-        if (allAreSpec) {
-          specPhaseCompleteEmitted = true;
-          await executeReaction(
-            "system",
-            "all",
-            "spec-phase-complete",
-            specPhaseReactionConfig as ReactionConfig,
-          );
+        // Execute spec-phase-complete reaction if ALL finished sessions are spec sessions
+        const specPhaseReactionConfig = config.reactions["spec-phase-complete"];
+        if (specPhaseReactionConfig && specPhaseReactionConfig.action) {
+          const allAreSpec = sessions.every((s) => s.metadata?.sessionType === "spec");
+          if (allAreSpec) {
+            await executeReaction(
+              "system",
+              "all",
+              "spec-phase-complete",
+              specPhaseReactionConfig as ReactionConfig,
+            );
+          }
         }
       }
       if (scopedProjectId) {
