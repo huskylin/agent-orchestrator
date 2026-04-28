@@ -1,0 +1,16 @@
+{
+  "name": "@aoagents/ao-plugin-tracker-jira",
+  "version": "0.1.0",
+  "description": "Tracker plugin: Jira Server (REST API v2)",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "peerDependencies": {
+    "@aoagents/ao-core": "*"
+  }
+}
