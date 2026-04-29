@@ -65,6 +65,9 @@ agent-orchestrator.yaml
 .opencode/
 .ao/
 
+# Spec-phase pipeline runtime artifacts (gathered specs + conflict report)
+/specs/
+
 # OS-specific files
 .DS_Store
 Thumbs.db

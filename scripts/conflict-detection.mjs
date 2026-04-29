@@ -16,9 +16,11 @@ import { parseArgs } from "node:util";
 
 const { values: args } = parseArgs({
   options: {
-    "specs-dir": { type: "string", default: "specs" },
-    "tasks-dir": { type: "string", default: ".claude/tasks" },
-    "dry-run": { type: "boolean", default: false },
+    "specs-dir":  { type: "string", default: "specs" },
+    "tasks-dir":  { type: "string", default: ".claude/tasks" },
+    "ao-url":     { type: "string", default: "http://localhost:3000" },
+    "project":    { type: "string", default: "" },
+    "dry-run":    { type: "boolean", default: false },
   },
 });
 
@@ -236,27 +238,139 @@ console.log(`[conflict-detection] loaded ${specs.length} specs`);
 
 const conflicts = detectConflicts(specs);
 
-if (conflicts.length > 0) {
-  console.error("[conflict-detection] FILE CONFLICTS DETECTED — cannot proceed:");
-  for (const { a, b, overlap } of conflicts) {
-    console.error(`  ${a} ↔ ${b}: ${overlap.join(", ")}`);
+async function postIssueComment(issue, body) {
+  if (!issue || !args["project"] || dryRun) return;
+  try {
+    const res = await fetch(
+      `${args["ao-url"].replace(/\/$/, "")}/api/issues/${encodeURIComponent(issue)}/comment`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: args["project"], body }),
+      },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.warn(`[conflict-detection] comment failed for ${issue}: ${data.error ?? res.status}`);
+    }
+  } catch (err) {
+    console.warn(`[conflict-detection] comment failed for ${issue}: ${err.message}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-serialise overlapping specs into chains via implicit blocked_by.
+// Connected components of the overlap graph are sorted by task_id ascending,
+// and each subsequent spec gains an implicit blocked_by on its predecessor —
+// so wave-monitor will run them sequentially without losing parallelism for
+// non-overlapping groups.
+// ---------------------------------------------------------------------------
+function autoSerialiseConflicts(specs, conflicts) {
+  if (conflicts.length === 0) return { autoOrder: [], affectedSpecs: [] };
+
+  const idOf = (s) => s.task_id ?? s.file;
+  const specById = new Map(specs.map((s) => [idOf(s), s]));
+
+  // Union-find over conflict pairs to get connected components.
+  const parent = new Map();
+  for (const id of specById.keys()) parent.set(id, id);
+  const find = (x) => {
+    while (parent.get(x) !== x) {
+      parent.set(x, parent.get(parent.get(x)));
+      x = parent.get(x);
+    }
+    return x;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const { a, b } of conflicts) union(a, b);
+
+  // Group spec ids by root.
+  const groups = new Map();
+  for (const id of specById.keys()) {
+    const root = find(id);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(id);
   }
 
+  const autoOrder = [];
+  const affectedSpecs = new Set();
+
+  for (const [, members] of groups) {
+    if (members.length < 2) continue;
+    // Deterministic sort: task_id ascending (numeric-aware).
+    members.sort((a, b) => {
+      const numA = a.match(/\d+/);
+      const numB = b.match(/\d+/);
+      if (numA && numB) {
+        const cmp = parseInt(numA[0], 10) - parseInt(numB[0], 10);
+        if (cmp !== 0) return cmp;
+      }
+      return a.localeCompare(b);
+    });
+
+    autoOrder.push(members);
+    for (let i = 1; i < members.length; i++) {
+      const spec = specById.get(members[i]);
+      const predecessor = members[i - 1];
+      const existing = spec.blocked_by ?? [];
+      if (!existing.includes(predecessor)) {
+        spec.blocked_by = [...existing, predecessor];
+      }
+      affectedSpecs.add(members[i]);
+    }
+  }
+
+  return { autoOrder, affectedSpecs: [...affectedSpecs] };
+}
+
+const { autoOrder } = autoSerialiseConflicts(specs, conflicts);
+
+// Always write conflict-report.json for visibility (even when auto-resolved).
+if (conflicts.length > 0) {
   const reportPath = join(specsDir, "conflict-report.json");
   const report = {
     detectedAt: new Date().toISOString(),
     conflicts: conflicts.map(({ a, b, overlap }) => ({ a, b, overlap })),
+    autoSerialisation: autoOrder.map((chain) => ({
+      chain,
+      note: "issues auto-serialised by file overlap; ordered by ascending issue id",
+    })),
     resolution:
-      "請修改衝突 spec 的 files_to_touch，確保每個檔案只屬於一個 issue，" +
-      "或在較後執行的 issue spec 加入 blocked_by 依賴關係讓其串行執行。",
+      "重疊的檔案已自動串接成 wave chain。若需要不同順序，請手動編輯 spec 的 blocked_by 並重跑 conflict-detection.mjs。",
   };
   writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
-  console.error(`[conflict-detection] 詳細報告已寫入 ${reportPath}`);
-  process.exit(1);
+  console.warn("[conflict-detection] file overlaps detected — auto-serialised into chains:");
+  for (const chain of autoOrder) {
+    console.warn(`  ${chain.join(" → ")}`);
+  }
+  console.warn(`[conflict-detection] audit log written to ${reportPath}`);
 }
 
-console.log("[conflict-detection] no conflicts found");
+const waves = buildWaves(specs);
+writeTasks(waves);
 
-writeTasks(buildWaves(specs));
+// Mirror wave assignment + auto-serialisation info to tracker
+const autoChainByIssue = new Map();
+for (const chain of autoOrder) {
+  for (const issue of chain) autoChainByIssue.set(issue, chain);
+}
 
-console.log("[conflict-detection] done — tasks written to", tasksDir);
+for (let i = 0; i < waves.length; i++) {
+  for (const spec of waves[i]) {
+    const issue = spec.task_id;
+    let body = `[AO] 📋 Queued in Wave ${i + 1} (${waves[i].length} issue${waves[i].length === 1 ? "" : "s"} in this wave)`;
+    const chain = autoChainByIssue.get(issue);
+    if (chain) {
+      body += `\nAuto-serialised due to file overlap: ${chain.join(" → ")}`;
+    }
+    await postIssueComment(issue, body);
+  }
+}
+
+console.log(
+  `[conflict-detection] done — ${specs.length} specs, ${waves.length} wave(s) written to ${tasksDir}`,
+);

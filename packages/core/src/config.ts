@@ -238,7 +238,22 @@ const RoleAgentConfigSchema = z
 
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
-  repo: z.string().optional(),
+  repo: z
+    .union([
+      z.string(),
+      z.object({
+        owner: z.string(),
+        name: z.string(),
+        platform: z.string().optional(),
+        originUrl: z.string().optional(),
+      }).passthrough(),
+    ])
+    .optional()
+    .transform((val) =>
+      typeof val === "object" && val !== null && "owner" in val && "name" in val
+        ? `${val.owner}/${val.name}`
+        : val,
+    ),
   path: z.string(),
   defaultBranch: z.string().default("main"),
   sessionPrefix: z

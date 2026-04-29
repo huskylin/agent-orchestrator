@@ -43,7 +43,8 @@ import {
 import { formatAutomatedCommentsMessage } from "./format-automated-comments.js";
 import { DEFAULT_BUGBOT_COMMENTS_MESSAGE } from "./config.js";
 import { buildLifecycleMetadataPatch, cloneLifecycle, deriveLegacyStatus } from "./lifecycle-state.js";
-import { updateMetadata } from "./metadata.js";
+import { mutateMetadata, readMetadataRaw, updateMetadata } from "./metadata.js";
+import { withFileLockSync } from "./file-lock.js";
 import { getSessionsDir } from "./paths.js";
 import { applyDecisionToLifecycle as commitLifecycleDecisionInPlace } from "./lifecycle-transition.js";
 import {
@@ -1910,6 +1911,68 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       }
     }
 
+    // Mirror PR/CI/merge transitions to issue tracker as comments.
+    // Dedup across multiple LifecycleManager instances (CLI worker + web webhook
+    // handler) and concurrent checkSession invocations using an atomic
+    // compare-and-swap on the `trackerNotifiedStatus` metadata field.
+    // mutateMetadata reads-then-writes synchronously in a single call, so only
+    // one caller can transition the field; all others see the new value and skip.
+    if (oldStatus !== newStatus && session.issueId && session.projectId) {
+      const project = config.projects[session.projectId];
+      const sessionsDir = project ? getSessionsDir(project.storageKey) : null;
+      let weClaimed = false;
+      if (sessionsDir) {
+        // Cross-process compare-and-swap: hold a file lock around read+write so
+        // CLI worker process and web webhook handler process can't both pass
+        // the dedup check concurrently.
+        try {
+          withFileLockSync(`${sessionsDir}/.tracker-notify-${session.id}.lock`, () => {
+            mutateMetadata(sessionsDir, session.id, (existing) => {
+              if (existing["trackerNotifiedStatus"] === newStatus) {
+                return existing;
+              }
+              weClaimed = true;
+              return { ...existing, trackerNotifiedStatus: newStatus };
+            });
+          });
+        } catch {
+          /* best effort — fall back to no-dedup */
+          weClaimed = true;
+        }
+      } else {
+        weClaimed = true;
+      }
+      if (weClaimed && project?.tracker?.plugin) {
+        const tracker = registry.get<Tracker>("tracker", project.tracker.plugin);
+        if (tracker?.addComment) {
+          let body: string | null = null;
+          const prRef = session.pr?.url ?? "";
+          if (newStatus === "merged") {
+            body = `[AO] ✅ Merged${prRef ? ` — ${prRef}` : ""} (session ${session.id})`;
+          } else if (newStatus === "ci_failed") {
+            body = `[AO] ❌ CI failing${prRef ? ` on ${prRef}` : ""} — agent fixing (session ${session.id})`;
+          } else if (newStatus === "changes_requested") {
+            body = `[AO] 👀 Changes requested${prRef ? ` on ${prRef}` : ""} — agent addressing (session ${session.id})`;
+          } else if (newStatus === "done") {
+            const sessionType = session.metadata?.sessionType;
+            const branch = session.branch ? ` (${session.branch})` : "";
+            if (sessionType === "spec") {
+              body = `[AO] ✅ Spec completed — session ${session.id}${branch}`;
+            } else {
+              body = `[AO] ✅ Completed — session ${session.id}${branch}`;
+            }
+          }
+          if (body) {
+            try {
+              await tracker.addComment(session.issueId, body, project);
+            } catch {
+              /* best effort */
+            }
+          }
+        }
+      }
+    }
+
     // Pin first quality summary for title stability
     if (
       session.agentInfo?.summary &&
@@ -2057,9 +2120,14 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         }
       }
 
-      // Check if all sessions are complete (trigger reaction only once)
-      const activeSessions = sessions.filter((s) => !TERMINAL_STATUSES.has(s.status));
-      if (sessions.length > 0 && activeSessions.length === 0 && !allCompleteEmitted) {
+      // Check if all sessions are complete (trigger reaction only once).
+      // Orchestrator sessions are excluded because they remain alive across
+      // worker phases — counting them would prevent the reaction from ever firing.
+      const workerSessions = sessions.filter(
+        (s) => !s.id.includes("-orchestrator"),
+      );
+      const activeSessions = workerSessions.filter((s) => !TERMINAL_STATUSES.has(s.status));
+      if (workerSessions.length > 0 && activeSessions.length === 0 && !allCompleteEmitted) {
         allCompleteEmitted = true;
 
         // Execute all-complete reaction if configured
@@ -2073,11 +2141,17 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           }
         }
 
-        // Execute spec-phase-complete reaction if ALL finished sessions are spec sessions
-        const specPhaseReactionConfig = config.reactions["spec-phase-complete"];
-        if (specPhaseReactionConfig && specPhaseReactionConfig.action) {
-          const allAreSpec = sessions.every((s) => s.metadata?.sessionType === "spec");
-          if (allAreSpec) {
+        // Execute spec-phase-complete reaction if ALL finished worker sessions are spec sessions.
+        // Reactions can be defined per-project (project.reactions) or globally (config.reactions);
+        // project-level wins. Look up from any spec session's project.
+        const allAreSpec = workerSessions.every((s) => s.metadata?.sessionType === "spec");
+        if (allAreSpec && workerSessions.length > 0) {
+          const projectId = workerSessions[0].projectId;
+          const project = projectId ? config.projects[projectId] : undefined;
+          const projectReaction = project?.reactions?.["spec-phase-complete"];
+          const globalReaction = config.reactions["spec-phase-complete"];
+          const specPhaseReactionConfig = projectReaction ?? globalReaction;
+          if (specPhaseReactionConfig && specPhaseReactionConfig.action) {
             await executeReaction(
               "system",
               "all",

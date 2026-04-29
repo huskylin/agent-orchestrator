@@ -182,7 +182,7 @@ export function mapAgentReportToLifecycle(state: AgentReportedState): {
     case "ready_for_review":
       return { sessionState: "idle", sessionReason: "awaiting_external_review" };
     case "completed":
-      return { sessionState: "idle", sessionReason: "research_complete" };
+      return { sessionState: "done", sessionReason: "research_complete" };
   }
 }
 

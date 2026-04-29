@@ -117,10 +117,12 @@ async function initServices(): Promise<Services> {
 
   const sessionManager = createSessionManager({ config, registry });
 
-  // Start the lifecycle manager — polls sessions every 30s, triggers reactions
-  // (CI failure → send fix message, review comments → forward to agent, etc.)
+  // Create a LifecycleManager for on-demand checks (used by the webhook route
+  // to react immediately when GitHub pushes events). Do NOT start its polling
+  // loop — periodic polling already runs inside `ao start` via the CLI's
+  // lifecycle-service. Running both polling loops in parallel duplicates work
+  // and causes notification events (Jira comments, etc.) to fire twice.
   const lifecycleManager = createLifecycleManager({ config, registry, sessionManager });
-  lifecycleManager.start(30_000);
 
   return { config, registry, sessionManager, lifecycleManager };
 }

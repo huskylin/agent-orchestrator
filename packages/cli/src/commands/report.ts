@@ -23,8 +23,44 @@ import {
   loadConfig,
   normalizeAgentReportedState,
   type AgentReportedState,
+  type Tracker,
 } from "@aoagents/ao-core";
-import { getSessionManager } from "../lib/create-session-manager.js";
+import { getSessionManager, getPluginRegistry } from "../lib/create-session-manager.js";
+
+function commentForReport(
+  state: AgentReportedState,
+  sessionName: string,
+  prUrl: string | undefined,
+  prNumber: number | undefined,
+  note: string | undefined,
+): string | null {
+  const noteSuffix = note ? ` — ${note}` : "";
+  switch (state) {
+    case "completed":
+      return `[AO] ✅ Completed — session ${sessionName}${noteSuffix}`;
+    case "needs_input":
+      return `[AO] 🚨 Needs human input — session ${sessionName}${noteSuffix}`;
+    case "waiting":
+      return `[AO] ⏸️ Waiting on external dependency — session ${sessionName}${noteSuffix}`;
+    case "fixing_ci":
+      return `[AO] 🔧 Fixing CI — session ${sessionName}${noteSuffix}`;
+    case "addressing_reviews":
+      return `[AO] 🔧 Addressing review feedback — session ${sessionName}${noteSuffix}`;
+    case "pr_created":
+    case "draft_pr_created": {
+      const ref = prNumber !== undefined ? `#${prNumber}` : prUrl ?? "PR";
+      const label = state === "draft_pr_created" ? "Draft PR opened" : "PR opened";
+      return `[AO] 🔗 ${label}: ${ref} — session ${sessionName}`;
+    }
+    case "ready_for_review": {
+      const ref = prNumber !== undefined ? `#${prNumber}` : prUrl ?? "PR";
+      return `[AO] 👀 Ready for review: ${ref} — session ${sessionName}`;
+    }
+    case "started":
+    case "working":
+      return null;
+  }
+}
 
 function resolveSessionId(explicit: string | undefined): string {
   const fromArg = explicit?.trim();
@@ -84,6 +120,22 @@ async function writeReport(
     }
     if (note) {
       console.log(chalk.dim(`  note: ${note}`));
+    }
+
+    // Mirror lifecycle event to issue tracker (best effort)
+    if (session.issueId && project.tracker?.plugin) {
+      const commentBody = commentForReport(state, sessionName, prUrl, prNumber, note);
+      if (commentBody) {
+        try {
+          const registry = await getPluginRegistry(config);
+          const tracker = registry.get<Tracker>("tracker", project.tracker.plugin);
+          if (tracker?.addComment) {
+            await tracker.addComment(session.issueId, commentBody, project);
+          }
+        } catch {
+          /* best effort */
+        }
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

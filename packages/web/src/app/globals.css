@@ -2192,6 +2192,35 @@ html.light .xterm .xterm-viewport:hover::-webkit-scrollbar-thumb:active {
   border-left-color: var(--color-status-working);
 }
 
+.session-card__working-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-status-working);
+  background: color-mix(in srgb, var(--color-status-working) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-status-working) 32%, transparent);
+  border-radius: 9999px;
+}
+
+.session-card__working-pill-spinner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--color-status-working) 30%, transparent);
+  border-top-color: var(--color-status-working);
+  animation: session-card-spin 0.9s linear infinite;
+}
+
+@keyframes session-card-spin {
+  to { transform: rotate(360deg); }
+}
+
 .session-card--accent-attention {
   border-left-color: var(--color-status-attention);
 }

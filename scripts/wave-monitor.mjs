@@ -23,6 +23,7 @@ const { values: args } = parseArgs({
     "ao-project":   { type: "string" },
     "repo-path":    { type: "string", default: process.cwd() },
     "tasks-dir":    { type: "string", default: "" },
+    "sessions-dir": { type: "string", default: "" },
     "agent":        { type: "string", default: "arcforge" },
     "interval-ms":  { type: "string", default: "30000" },
     "once":         { type: "boolean", default: false },
@@ -52,6 +53,9 @@ if (!aoProject) {
 // ---------------------------------------------------------------------------
 
 function getSessionsDir() {
+  if (args["sessions-dir"]) {
+    return resolve(args["sessions-dir"].replace(/^~/, homedir()));
+  }
   // ~/.agent-orchestrator/<12-char-hash>-<project-dir-name>/sessions
   const aoDir = join(homedir(), ".agent-orchestrator");
   const repoDirName = basename(repoPath);

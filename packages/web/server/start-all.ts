@@ -26,7 +26,7 @@ function spawnProcess(
   label: string,
   command: string,
   args: string[],
-  opts?: { restart?: boolean; maxRestarts?: number },
+  opts?: { restart?: boolean; maxRestarts?: number; env?: Record<string, string> },
 ): ChildProcess {
   let restarts = 0;
   const maxRestarts = opts?.maxRestarts ?? 3;
@@ -36,7 +36,7 @@ function spawnProcess(
     const child = spawn(command, args, {
       cwd: pkgRoot,
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: { ...process.env, ...(opts?.env ?? {}) },
     });
 
     child.stdout?.on("data", (data: Buffer) => {
@@ -79,23 +79,40 @@ function spawnProcess(
  * Tries the local .bin shim first (fast), then falls back to require.resolve (hoisted deps).
  */
 function resolveNextBin(): string {
-  const localBin = resolve(pkgRoot, "node_modules", ".bin", "next");
-  if (existsSync(localBin)) return localBin;
-
-  // Hoisted node_modules — resolve the actual next CLI entry
+  // Prefer the JS entry over the .bin shell wrapper so we can spawn it via
+  // `node --require <preload>` (the shell wrapper can't be `node`-loaded).
   const require = createRequire(resolve(pkgRoot, "package.json"));
   try {
     const nextPkg = require.resolve("next/package.json");
-    return resolve(dirname(nextPkg), "dist", "bin", "next");
+    const jsBin = resolve(dirname(nextPkg), "dist", "bin", "next");
+    if (existsSync(jsBin)) return jsBin;
   } catch {
-    // Last resort — rely on PATH
-    return "next";
+    // Fall through to .bin shim
   }
+
+  const localBin = resolve(pkgRoot, "node_modules", ".bin", "next");
+  if (existsSync(localBin)) return localBin;
+
+  return "next";
 }
 
-// Start Next.js production server
+// Start Next.js production server.
+// Spawn via `node --require silence-rejection.cjs <next-bin> start -p PORT`
+// so the preload installs an unhandledRejection handler BEFORE Next.js wires
+// up its own (which would call process.exit on transient SSE stream errors).
 const port = process.env["PORT"] || "3000";
-spawnProcess("next", resolveNextBin(), ["start", "-p", port]);
+const silenceScript = resolve(__dirname, "silence-rejection.js");
+const nextArgs = [
+  "--require",
+  silenceScript,
+  "--unhandled-rejections=warn",
+  resolveNextBin(),
+  "start",
+  "-p",
+  port,
+];
+log("start-all", `spawning: ${process.execPath} ${nextArgs.join(" ")}`);
+spawnProcess("next", process.execPath, nextArgs, { restart: true });
 
 // Start direct terminal WebSocket server (auto-restart on crash)
 spawnProcess("direct-terminal", "node", [resolve(__dirname, "direct-terminal-ws.js")], { restart: true });

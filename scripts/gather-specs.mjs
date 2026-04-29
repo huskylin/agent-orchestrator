@@ -9,6 +9,7 @@
 //   --dry-run            只印出會複製的檔案，不實際複製
 
 import { readFileSync, copyFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { resolve, join, basename } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -16,9 +17,12 @@ import { parseArgs } from "node:util";
 
 const { values: args } = parseArgs({
   options: {
-    "repo-path":  { type: "string", default: process.cwd() },
-    "specs-dir":  { type: "string", default: "" },
-    "dry-run":    { type: "boolean", default: false },
+    "repo-path":          { type: "string", default: process.cwd() },
+    "specs-dir":          { type: "string", default: "" },
+    "sessions-dir":       { type: "string", default: "" },
+    "ao-url":             { type: "string", default: "http://localhost:3000" },
+    "no-cleanup":         { type: "boolean", default: false },
+    "dry-run":            { type: "boolean", default: false },
   },
 });
 
@@ -73,7 +77,9 @@ function parseSessionFile(content) {
 // ---------------------------------------------------------------------------
 // 主流程
 // ---------------------------------------------------------------------------
-const sessionsDir = findSessionsDir();
+const sessionsDir = args["sessions-dir"]
+  ? resolve(args["sessions-dir"].replace(/^~/, homedir()))
+  : findSessionsDir();
 console.log(`[gather-specs] sessions dir: ${sessionsDir}`);
 
 let sessionFiles;
@@ -101,7 +107,13 @@ for (const sessionId of sessionFiles) {
 
   const meta = parseSessionFile(content);
   if (meta.sessionType === "spec" && meta.worktree) {
-    specSessions.push({ sessionId, worktree: meta.worktree, branch: meta.branch });
+    specSessions.push({
+      sessionId,
+      worktree: meta.worktree,
+      branch: meta.branch,
+      issue: meta.issue,
+      project: meta.project,
+    });
   }
 }
 
@@ -116,8 +128,28 @@ console.log(`[gather-specs] 找到 ${specSessions.length} 個 spec sessions`);
 // 確保目標 specs 目錄存在
 if (!dryRun) mkdirSync(specsDir, { recursive: true });
 
+async function postComment(issue, project, body) {
+  if (!issue || !project || dryRun) return;
+  try {
+    const res = await fetch(
+      `${args["ao-url"].replace(/\/$/, "")}/api/issues/${encodeURIComponent(issue)}/comment`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project, body }),
+      },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.warn(`[gather-specs] comment failed for ${issue}: ${data.error ?? res.status}`);
+    }
+  } catch (err) {
+    console.warn(`[gather-specs] comment failed for ${issue}: ${err.message}`);
+  }
+}
+
 let copied = 0;
-for (const { sessionId, worktree, branch } of specSessions) {
+for (const { sessionId, worktree, branch, issue, project } of specSessions) {
   const worktreeSpecsDir = join(worktree, "specs");
   if (!existsSync(worktreeSpecsDir)) {
     console.warn(`[gather-specs] ${sessionId} (${branch}): specs/ 目錄不存在，跳過`);
@@ -143,6 +175,27 @@ for (const { sessionId, worktree, branch } of specSessions) {
     if (!dryRun) {
       copyFileSync(src, dst);
       copied++;
+      await postComment(
+        issue,
+        project,
+        `[AO] 📋 Spec collected — ${file} (from session ${sessionId}, branch ${branch})`,
+      );
+    }
+  }
+
+  // After successful gather, remove the spec session's worktree so the
+  // feat/<ISSUE> branch is freed up for the impl agent (Phase 2) to check out.
+  // The spec commit already lives on the remote branch; impl agent will fetch it.
+  if (!dryRun && !args["no-cleanup"]) {
+    try {
+      execFileSync("git", ["-C", repoPath, "worktree", "remove", "--force", worktree], {
+        stdio: "pipe",
+      });
+      console.log(`[gather-specs] ${sessionId}: removed worktree ${worktree}`);
+    } catch (err) {
+      console.warn(
+        `[gather-specs] ${sessionId}: failed to remove worktree (${err.message?.split("\n")[0] ?? err}). Branch may stay locked; impl spawn for ${issue} could fail.`,
+      );
     }
   }
 }

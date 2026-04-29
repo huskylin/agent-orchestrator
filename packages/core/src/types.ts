@@ -678,6 +678,9 @@ export interface Tracker {
 
   /** Optional: create a new issue */
   createIssue?(input: CreateIssueInput, project: ProjectConfig): Promise<Issue>;
+
+  /** Optional: append a comment to an issue (used by AO to log lifecycle events back to tracker) */
+  addComment?(identifier: string, body: string, project: ProjectConfig): Promise<void>;
 }
 
 export interface Issue {

@@ -476,6 +476,12 @@ function SessionCardView({ session, onSend, onKill, onMerge, onRestore }: Sessio
         <span className="card__id">
           {session.id}
         </span>
+        {level === "working" && (
+          <span className="session-card__working-pill">
+            <span className="session-card__working-pill-spinner" />
+            working
+          </span>
+        )}
         <div className="flex-1" />
         {isRestorable && (
           <button

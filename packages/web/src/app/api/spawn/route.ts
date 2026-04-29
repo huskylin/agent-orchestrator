@@ -1,8 +1,23 @@
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { type NextRequest } from "next/server";
 import { validateIdentifier, validateString, validateConfiguredProject } from "@/lib/validation";
 import { getServices } from "@/lib/services";
 import { sessionToDashboard } from "@/lib/serialize";
 import { getCorrelationId, jsonWithCorrelation, recordApiObservation } from "@/lib/observability";
+
+function loadSpecPrompt(configPath: string): string | undefined {
+  const candidates = [
+    join(dirname(configPath), "prompts", "spec-agent.md"),
+    join(dirname(configPath), "spec-agent.md"),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      return readFileSync(p, "utf-8").trim();
+    }
+  }
+  return undefined;
+}
 
 /** POST /api/spawn — Spawn a new session */
 export async function POST(request: NextRequest) {
@@ -57,10 +72,19 @@ export async function POST(request: NextRequest) {
     const rawPrompt = (body.prompt as string) ?? undefined;
     const prompt = rawPrompt ? rawPrompt.replace(/[\r\n]/g, " ").trim() : undefined;
 
+    const sessionType =
+      typeof body.sessionType === "string" ? body.sessionType : undefined;
+
+    // For spec sessions, auto-load prompts/spec-agent.md if no explicit prompt provided
+    const resolvedPrompt =
+      prompt ||
+      (sessionType === "spec" ? loadSpecPrompt(config.configPath) : undefined);
+
     const session = await sessionManager.spawn({
       projectId,
       issueId: (body.issueId as string) ?? undefined,
-      prompt: prompt || undefined,
+      prompt: resolvedPrompt,
+      sessionType,
     });
 
     recordApiObservation({

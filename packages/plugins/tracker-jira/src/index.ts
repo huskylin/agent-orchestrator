@@ -388,6 +388,14 @@ function createJiraTracker(): Tracker {
       }
     },
 
+    async addComment(identifier: string, body: string, project: ProjectConfig): Promise<void> {
+      const config = getConfig(project);
+      await jiraFetch(config, `/issue/${identifier}/comment`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+    },
+
     async createIssue(input: CreateIssueInput, project: ProjectConfig): Promise<Issue> {
       const config = getConfig(project);
       const projectKey = config.project;

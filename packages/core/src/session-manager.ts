@@ -1494,12 +1494,25 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
           {
             labels: ["agent:in-progress"],
             removeLabels: ["agent:backlog"],
-            comment: "Session spawned — issue now in progress.",
           },
           project,
         );
       } catch {
         /* best effort — tracker update is non-fatal */
+      }
+    }
+
+    // Append phase-aware comment to issue tracker
+    if (spawnConfig.issueId && plugins.tracker?.addComment) {
+      const phaseLabel =
+        spawnConfig.sessionType === "spec"
+          ? "🔍 Spec generation started"
+          : "🔧 Implementation started";
+      const commentBody = `[AO] ${phaseLabel} — session ${sessionId} (${branch})`;
+      try {
+        await plugins.tracker.addComment(spawnConfig.issueId, commentBody, project);
+      } catch {
+        /* best effort */
       }
     }
 

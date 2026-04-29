@@ -124,7 +124,7 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
           const res = await fetch("/api/spawn", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId, issueId: id }),
+            body: JSON.stringify({ projectId, issueId: id, sessionType: "spec" }),
           });
           if (!res.ok) {
             const data = (await res.json()) as { error?: string };
@@ -148,7 +148,7 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
     }
 
     if (spawnedCount > 0) {
-      showToast(`已 spawn ${spawnedCount} 個 issue`, "success");
+      showToast(`已啟動 ${spawnedCount} 個 spec agent`, "success");
       onSpawned();
     }
   };
@@ -236,7 +236,7 @@ export function IssuePanel({ projectId, onSpawned }: IssuePanelProps) {
             onClick={() => void handleBulkSpawn()}
             disabled={isBulkSpawning}
           >
-            {isBulkSpawning ? "Spawning…" : `Spawn 選取的 (${selectedIds.size})`}
+            {isBulkSpawning ? "Spawning…" : `Spec Phase (${selectedIds.size})`}
           </button>
         )}
       </div>
