@@ -23,7 +23,7 @@
 | `types.ts` | `SessionSpawnConfig` / `SessionMetadata` 新增 `sessionType` 欄位；`ReactionConfig.action` 新增 `"command"` 類型；`Tracker` 介面新增 `addComment?` |
 | `config.ts` | Zod schema 同步 `"command"` action；`repo` 接受 string 或 `{owner,name,platform,originUrl}` object |
 | `metadata.ts` | 將 `sessionType` 寫入 session flat-file metadata |
-| `global-config.ts` | `LOCAL_CONFIG_FILENAMES` 加入 `ao-project.yaml`，讓 self-host project 的 global yaml + local yaml 可同目錄共存 |
+| `global-config.ts` | `LOCAL_CONFIG_FILENAMES` 加入 `ao-project.yaml` 作為 local behavior config 檔名 |
 | `agent-report.ts` | `completed` 從 `idle` 改為 `done`（terminal state，才會觸發 spec-phase-complete reaction） |
 | `session-manager.ts` | spawn 時依 `sessionType` 寫 phase comment（🔍 Spec / 🔧 Impl）回 Jira |
 | `lifecycle-manager.ts` | PR open / merged / ci_failed / changes_requested / done 自動同步 comment 到 Jira；以 `trackerNotifiedStatus` metadata + 跨 process file lock 做 dedup；`spec-phase-complete` reaction 從 project-level 找；orchestrator 排除在 active sessions 計算外 |
@@ -55,7 +55,7 @@
 
 | 路徑 | 說明 |
 |------|------|
-| `ao-project.yaml` | 本 repo 自身被 orchestrate 時的 behavior config（agentRules / reactions / tracker），跟 global yaml 同目錄共存 |
+| `ao-project.yaml`（target project 內） | local behavior config 檔名 — `agentRules` / `reactions` / `tracker` 等住在 target project 的 repo 裡 |
 | `prompts/spec-agent.md` | Spec agent 的 system prompt，被 `phase0-spawn-specs.mjs` 與 `/api/spawn`（spec mode）自動載入 |
 | `packages/web/src/instrumentation.ts` | Next.js instrumentation hook |
 | `packages/web/server/silence-rejection.ts` | next 子程序的 preload script |
@@ -116,23 +116,102 @@ graph TB
 
 ---
 
-## Self-Host 架構
+## Project 設置
 
-從 fork 的某次重構開始，**本 repo（agent-orchestrator）自己被當作被 orchestrate 的 project**（self-hosting）。原本的 demo project 已棄用，配置只剩兩個 yaml：
+AO 是個工具，被 orchestrate 的 project 是另一個 git repo（你實際要做事的程式碼）。配置分兩層、住在不同目錄：
 
-| 檔案 | 角色 | 內容 |
-|------|------|------|
-| `agent-orchestrator.yaml` | **Global identity registry** | `port`、`defaults`、`projects` map（每個 project 的 `path` / `repo` / `storageKey` / `displayName` / `sessionPrefix`） |
-| `ao-project.yaml` | **Local behavior config** | `agentRules`、`orchestratorRules`、`reactions`、`tracker` 等（被 AO 在 project 目錄底下尋找） |
+| 檔案 | 角色 | 放在哪 | 內容 |
+|------|------|--------|------|
+| **Global registry** | identity / 註冊 | 任意路徑（用 `AO_GLOBAL_CONFIG` 指向，例如 `~/.ao/global.yaml`） | `port`、`defaults`、`projects` map（每個 project 的 `path` / `repo` / `storageKey` / `displayName` / `sessionPrefix`） |
+| **Local behavior** | 行為規則 | `<project.path>/ao-project.yaml`（或 `agent-orchestrator.yaml` 平坦格式） | `agentRules`、`orchestratorRules`、`reactions`、`tracker` |
 
-兩個檔案同目錄並存的關鍵是 fork 改的 `LOCAL_CONFIG_FILENAMES`：local config 除了傳統的 `agent-orchestrator.yaml`，還會找 `ao-project.yaml`。Global yaml 的內容會被 AO 在啟動時 sanitize，自動 strip 掉非 identity 欄位（如果你誤把 `agentRules` 寫到 global yaml，啟動時會看到 `[ao] stripped N legacy project registry fields`）。
+Global yaml 嚴格 schema 驗證，**只接受 identity 欄位**；誤把 `agentRules` 寫進去會在啟動時被 strip 掉並 log `[ao] stripped N legacy project registry fields`。Behavior 設定永遠放在 target project 的 `ao-project.yaml`，跟著該 repo 一起 commit。
 
-啟動時設環境變數：
+### 加一個新 project
+
+假設你的 project 在 `~/projects/my-app`：
+
+**1. Target project 必須是 git repo**
+
 ```bash
-# ~/.zshrc
-export AO_GLOBAL_CONFIG=~/projects/agent-orchestrator/agent-orchestrator.yaml
+cd ~/projects/my-app
+git remote -v   # 確認有 origin（指向 GitHub / GitLab）
+```
+
+**2. 在 target project 加 `ao-project.yaml`（可 commit 進該 repo）**
+
+```yaml
+# ~/projects/my-app/ao-project.yaml
+agentRules: |-
+  Always run tests before pushing.
+  Use conventional commits (feat:, fix:, chore:).
+  Write all PR titles in 繁體中文.
+
+orchestratorRules: |-
+  每個 issue 只負責明確的一組檔案，並在 issue 內列出「負責檔案範圍」。
+
+reactions:
+  spec-phase-complete:
+    auto: true
+    action: command
+    command: >-
+      node /path/to/agent-orchestrator/scripts/gather-specs.mjs
+        --repo-path ~/projects/my-app
+        --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions
+      &&
+      node /path/to/agent-orchestrator/scripts/conflict-detection.mjs
+        --specs-dir ~/projects/my-app/specs
+        --tasks-dir ~/projects/my-app/.claude/tasks
+        --project my-app
+      &&
+      ( pgrep -f 'wave-monitor.mjs.*my-app' >/dev/null || nohup node /path/to/agent-orchestrator/scripts/wave-monitor.mjs
+          --ao-project my-app
+          --repo-path ~/projects/my-app
+          --tasks-dir ~/projects/my-app/.claude/tasks
+          --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions
+          --agent claude-code
+          > /tmp/wave-monitor-my-app.log 2>&1 & )
+
+tracker:
+  plugin: jira
+  baseUrl: https://jira.yourcompany.com
+  project: MYAPP
+  boardId: 123
+```
+
+**3. 在 global yaml 註冊 project**
+
+```yaml
+# ~/.ao/global.yaml （或任何位置，由 AO_GLOBAL_CONFIG 指向）
+port: 3000
+defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+
+projects:
+  my-app:
+    projectId: my-app
+    path: ~/projects/my-app
+    storageKey: <12-char-hex>     # 沒給的話 AO 會自動算 hash
+    repo:
+      owner: your-github-user
+      name: my-app
+      platform: github
+      originUrl: https://github.com/your-github-user/my-app
+    defaultBranch: main
+    displayName: My App
+    sessionPrefix: ma             # session id 前綴：ma-1, ma-2...
+```
+
+**4. 啟動**
+
+```bash
+export AO_GLOBAL_CONFIG=~/.ao/global.yaml
 ao start
 ```
+
+Dashboard 開 `http://localhost:3000`，左側 sidebar 會列 my-app。多 project 並存就在 `projects:` map 加更多條目。
 
 ---
 
@@ -237,41 +316,17 @@ sequenceDiagram
 
 ### 設定
 
-`ao-project.yaml` 範例（reactions 段落，串接整套自動流程）：
+把上面 [Project 設置](#project-設置) 段落的 `ao-project.yaml` 範例放進你的 target project 即可。範例裡的路徑要對應到：
 
-```yaml
-reactions:
-  spec-phase-complete:
-    auto: true
-    action: command
-    command: >-
-      node ~/projects/agent-orchestrator/scripts/gather-specs.mjs
-      --repo-path ~/projects/agent-orchestrator
-      --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions
-      &&
-      node ~/projects/agent-orchestrator/scripts/conflict-detection.mjs
-      --specs-dir ~/projects/agent-orchestrator/specs
-      --tasks-dir ~/projects/agent-orchestrator/.claude/tasks
-      --project paradise-soft
-      &&
-      ( pgrep -f 'wave-monitor.mjs.*<projectId>' >/dev/null
-        ||
-        nohup node ~/projects/agent-orchestrator/scripts/wave-monitor.mjs
-          --ao-project <projectId>
-          --repo-path ~/projects/agent-orchestrator
-          --tasks-dir ~/projects/agent-orchestrator/.claude/tasks
-          --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions
-          --agent claude-code
-          > /tmp/wave-monitor.log 2>&amp;1 &amp; )
+| 變數 | 你要填什麼 |
+|------|-----------|
+| `~/projects/my-app` | 你 target project 的絕對路徑（同 global yaml 的 `path`） |
+| `<storageKey>` | global yaml 該 project 的 `storageKey`（或 `~/.agent-orchestrator/` 底下對應的目錄名） |
+| `my-app` / `<projectId>` | global yaml `projects:` 底下你給的 key |
+| `--agent claude-code` | impl agent 用哪個 plugin（claude-code / codex / opencode） |
+| `/path/to/agent-orchestrator/` | 這個 fork 的安裝路徑（pipeline 腳本住的地方） |
 
-tracker:
-  plugin: jira
-  baseUrl: https://jira.yourcompany.com
-  project: WIN
-  boardId: 359   # 用於 sprint 篩選
-```
-
-`prompts/spec-agent.md` 是 spec agent 的 system prompt。`/api/spawn` 在 `sessionType=spec` 時會自動讀此檔當 userPrompt；`phase0-spawn-specs.mjs` 也會載入。
+`prompts/spec-agent.md` 是 spec agent 的 system prompt（住在這個 fork 的 repo 內）。`/api/spawn` 在 `sessionType=spec` 時會自動讀此檔當 userPrompt；`phase0-spawn-specs.mjs` 也會載入。
 
 ### 使用方式
 
@@ -295,31 +350,33 @@ tracker:
 
 **Manual 模式 — CLI 各步驟**
 
+以下範例假設 target project 是 `~/projects/my-app`、global yaml 註冊 id 是 `my-app`、storageKey 是 `<storageKey>`：
+
 ```bash
 # Phase 0：從 Jira Sprint 批量產生 spec sessions
 export JIRA_EMAIL=you@company.com
 export JIRA_TOKEN=your-api-token
 node scripts/phase0-spawn-specs.mjs \
-  --jira-project WIN \
+  --jira-project MYAPP \
   --jira-url https://jira.yourcompany.com \
-  --ao-project paradise-soft \
+  --ao-project my-app \
   --sprint current
 
 # Phase 1：收集 spec、自動 serialise 衝突、產出 wave 計畫
 node scripts/gather-specs.mjs \
-  --repo-path ~/projects/agent-orchestrator \
+  --repo-path ~/projects/my-app \
   --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions
 
 node scripts/conflict-detection.mjs \
-  --specs-dir ~/projects/agent-orchestrator/specs \
-  --tasks-dir ~/projects/agent-orchestrator/.claude/tasks \
-  --project paradise-soft
+  --specs-dir ~/projects/my-app/specs \
+  --tasks-dir ~/projects/my-app/.claude/tasks \
+  --project my-app
 
 # Phase 2：wave-by-wave impl 調度（背景跑）
 nohup node scripts/wave-monitor.mjs \
-  --ao-project paradise-soft \
-  --repo-path ~/projects/agent-orchestrator \
-  --tasks-dir ~/projects/agent-orchestrator/.claude/tasks \
+  --ao-project my-app \
+  --repo-path ~/projects/my-app \
+  --tasks-dir ~/projects/my-app/.claude/tasks \
   --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions \
   --agent claude-code \
   > /tmp/wave-monitor.log 2>&1 &
@@ -367,7 +424,7 @@ pnpm typecheck               # 全套型別檢查
 | `packages/web/server/silence-rejection.ts` | next 子程序 preload |
 | `scripts/` | Spec-Phase Pipeline 腳本（gather / conflict / wave-monitor / phase0） |
 | `prompts/spec-agent.md` | Spec agent system prompt |
-| `ao-project.yaml` | self-host 的 behavior config |
+| `ao-project.yaml` | local behavior config 檔名（住在 target project 目錄底下） |
 
 ---
 
