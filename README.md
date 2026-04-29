@@ -75,43 +75,43 @@
 
 ```mermaid
 graph TB
-    YAML[agent-orchestrator.yaml<br>identity 註冊]
-    LOCAL[ao-project.yaml<br>behavior agentRules reactions tracker]
-    JIRA[Jira REST API]
+    YAML["agent-orchestrator.yaml<br>identity 註冊"]
+    LOCAL["ao-project.yaml<br>behavior agentRules reactions tracker"]
+    JIRA["Jira REST API"]
 
-    DASH[Dashboard IssuePanel<br>Spec Phase 按鈕]
-    P0[scripts/phase0-spawn-specs.mjs]
+    DASH["Dashboard IssuePanel<br>Spec Phase 按鈕"]
+    P0["phase0-spawn-specs.mjs"]
 
-    GS[gather-specs.mjs<br>收集 + 清 worktree]
-    CD[conflict-detection.mjs<br>auto-serialise]
-    WM[wave-monitor.mjs<br>wave-by-wave impl]
+    GS["gather-specs.mjs<br>收集 + 清 worktree"]
+    CD["conflict-detection.mjs<br>auto-serialise"]
+    WM["wave-monitor.mjs<br>wave-by-wave impl"]
 
-    SESSION_MGR[Session Manager]
-    LIFECYCLE[Lifecycle Manager<br>狀態機 + Polling + Reactions<br>+ Jira comment 同步]
+    SESSION_MGR["Session Manager"]
+    LIFECYCLE["Lifecycle Manager<br>狀態機 + Polling + Reactions<br>+ Jira comment 同步"]
 
-    AGENTS[Agent plugins<br>claude-code / codex / opencode]
-    TRACKERS[Tracker plugins<br>jira / github / linear / gitlab]
-    INFRA[Runtime / Workspace / SCM<br>tmux / worktree / github]
+    AGENTS["Agent plugins<br>claude-code / codex / opencode"]
+    TRACKERS["Tracker plugins<br>jira / github / linear / gitlab"]
+    INFRA["Runtime / Workspace / SCM"]
 
-    WEB[packages/web Dashboard<br>Next.js 15 + SSE + xterm.js]
-    STORAGE[~/.agent-orchestrator/storageKey/<br>sessions/ archive/]
+    WEB["packages/web Dashboard<br>Next.js + SSE + xterm.js"]
+    STORAGE["~/.agent-orchestrator/storageKey/<br>sessions/ archive/"]
 
     YAML --> SESSION_MGR
     LOCAL --> SESSION_MGR
     JIRA --> P0
     JIRA --> DASH
-    DASH -->|/api/spawn| SESSION_MGR
-    P0 -->|ao spawn| SESSION_MGR
+    DASH --> SESSION_MGR
+    P0 --> SESSION_MGR
     SESSION_MGR --> LIFECYCLE
-    LIFECYCLE -->|spec-phase-complete| GS
+    LIFECYCLE --> GS
     GS --> CD
     CD --> WM
-    WM -->|ao spawn impl| SESSION_MGR
+    WM --> SESSION_MGR
     LIFECYCLE --> AGENTS
     LIFECYCLE --> INFRA
-    LIFECYCLE -->|addComment| TRACKERS
+    LIFECYCLE --> TRACKERS
     SESSION_MGR --> STORAGE
-    LIFECYCLE -->|SSE events| WEB
+    LIFECYCLE --> WEB
 ```
 
 ---
