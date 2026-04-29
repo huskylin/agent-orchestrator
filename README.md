@@ -114,102 +114,98 @@ graph TB
 
 ---
 
-## Project 設置
+## Quick Start（clone 後最快幾步上手）
 
-AO 是個工具，被 orchestrate 的 project 是另一個 git repo（你實際要做事的程式碼）。配置分兩層、住在不同目錄：
-
-| 角色 | 放在哪 | 內容 |
-|------|--------|------|
-| **Global registry** | 任意路徑（檔名隨意，用 `AO_GLOBAL_CONFIG` 環境變數指向，例如 `~/.ao/global.yaml`） | `port`、`defaults`、`projects` map（每個 project 的 `path` / `repo` / `storageKey` / `displayName` / `sessionPrefix`） |
-| **Local behavior** | `<project.path>/agent-orchestrator.yaml`（target project 目錄底下，flat 格式） | `agentRules`、`orchestratorRules`、`reactions`、`tracker` |
-
-Global yaml 嚴格 schema 驗證，**只接受 identity 欄位**；誤把 `agentRules` 寫進去會在啟動時被 strip 掉並 log `[ao] stripped N legacy project registry fields`。Behavior 設定永遠放在 target project 的 `agent-orchestrator.yaml`，跟著該 repo 一起 commit。
-
-### 加一個新 project
-
-假設你的 project 在 `~/projects/my-app`：
-
-**1. Target project 必須是 git repo**
+新 dev clone 完想盡快跑起來：
 
 ```bash
-cd ~/projects/my-app
-git remote -v   # 確認有 origin（指向 GitHub / GitLab）
+git clone https://github.com/huskylin/agent-orchestrator
+cd agent-orchestrator
+pnpm install && pnpm build
+
+# 1. Jira 認證（tracker 需要）
+export JIRA_EMAIL=you@yourcompany.com
+export JIRA_TOKEN=<your-jira-api-token>
+
+# 2. 確認你有 target project（被 orchestrate 的程式碼 repo）放在 yaml 裡指定的路徑
+#    repo 的 agent-orchestrator.yaml 預設指向 ~/projects/agent-orchestrator-demo
+#    若你的 target project 在別處，編輯 agent-orchestrator.yaml 改 path / repo
+ls ~/projects/agent-orchestrator-demo  # 沒有就 clone 你要的 target project
+
+# 3. 設定 AO 找 config 的方式（用 AO_CONFIG_PATH，不要用 AO_GLOBAL_CONFIG —
+#    後者會把 yaml 當 canonical global config 走 schema sanitize，
+#    把 agentRules / reactions / tracker 等 inline 欄位 strip 掉）
+echo 'export AO_CONFIG_PATH="$HOME/projects/agent-orchestrator/agent-orchestrator.yaml"' >> ~/.zshrc
+source ~/.zshrc
+
+# 4. 跑起來
+ao start
 ```
 
-**2. 在 target project 加 `agent-orchestrator.yaml`（可 commit 進該 repo）**
+Dashboard 開 `http://localhost:3000`、IssuePanel 切「目前 Sprint」就能看到 Jira issues、全選 → Spec Phase 即可開始自動 pipeline。
+
+---
+
+## Project 設置
+
+AO 的設定有兩種模式（上游皆支援），這個 fork 預設用 **模式 1（單一 wrapped yaml）**：
+
+| 模式 | identity（path / storageKey） | behavior（agentRules / reactions / tracker） | 適用情境 |
+|------|------------------------------|-----------------------------------------------|----------|
+| **模式 1（本 fork 預設）** | 跟 behavior 同檔，inline 在每個 project 底下 | 跟 identity 同檔 | 設定全集中、想跟著 AO repo commit 共享 |
+| **模式 2（split）** | global yaml（由 `AO_GLOBAL_CONFIG` 指向） | target project 內的 `agent-orchestrator.yaml`（flat 格式） | 多 dev、agentRules 想跟 target repo 一起 PR review |
+
+模式 1 的關鍵是 **不要設 `AO_GLOBAL_CONFIG`**：
+- 設了 → AO 把 yaml 當 canonical global config → 啟動時 sanitize 掉非 identity 欄位（log 顯示 `[ao] stripped N legacy project registry fields`） → agentRules / reactions 失效
+- 改用 `AO_CONFIG_PATH`（或讓 AO 從 cwd 自動找）→ 走上游的 wrapped yaml 解析路線 → 全部欄位被尊重
+
+### 設定範例（模式 1）
 
 ```yaml
-# ~/projects/my-app/agent-orchestrator.yaml
-agentRules: |-
-  Always run tests before pushing.
-  Use conventional commits (feat:, fix:, chore:).
-  Write all PR titles in 繁體中文.
-
-orchestratorRules: |-
-  每個 issue 只負責明確的一組檔案，並在 issue 內列出「負責檔案範圍」。
-
-reactions:
-  spec-phase-complete:
-    auto: true
-    action: command
-    command: >-
-      node /path/to/agent-orchestrator/scripts/gather-specs.mjs
-        --repo-path ~/projects/my-app
-        --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions
-      &&
-      node /path/to/agent-orchestrator/scripts/conflict-detection.mjs
-        --specs-dir ~/projects/my-app/specs
-        --tasks-dir ~/projects/my-app/.claude/tasks
-        --project my-app
-      &&
-      ( pgrep -f 'wave-monitor.mjs.*my-app' >/dev/null || nohup node /path/to/agent-orchestrator/scripts/wave-monitor.mjs
-          --ao-project my-app
-          --repo-path ~/projects/my-app
-          --tasks-dir ~/projects/my-app/.claude/tasks
-          --sessions-dir ~/.agent-orchestrator/<storageKey>/sessions
-          --agent claude-code
-          > /tmp/wave-monitor-my-app.log 2>&1 & )
-
-tracker:
-  plugin: jira
-  baseUrl: https://jira.yourcompany.com
-  project: MYAPP
-  boardId: 123
-```
-
-**3. 在 global yaml 註冊 project**
-
-```yaml
-# ~/.ao/global.yaml （或任何位置，由 AO_GLOBAL_CONFIG 指向）
+# ~/projects/agent-orchestrator/agent-orchestrator.yaml （此 fork 已附）
 port: 3000
 defaults:
   runtime: tmux
   agent: claude-code
   workspace: worktree
+  notifiers: []
 
 projects:
-  my-app:
-    projectId: my-app
-    path: ~/projects/my-app
-    storageKey: <12-char-hex>     # 沒給的話 AO 會自動算 hash
-    repo:
-      owner: your-github-user
-      name: my-app
-      platform: github
-      originUrl: https://github.com/your-github-user/my-app
+  paradise-soft:                              # 你給的 project id
+    name: paradise-soft
+    repo: huskylin/agent-orchestrator-demo    # GitHub owner/name（短格式）
+    path: ~/projects/agent-orchestrator-demo  # 本機 target project 路徑
     defaultBranch: main
-    displayName: My App
-    sessionPrefix: ma             # session id 前綴：ma-1, ma-2...
+    sessionPrefix: ps                         # session id 前綴：ps-1, ps-2...
+    storageKey: 123544a899d4                  # 不給的話 AO 自動算 hash
+
+    agentRules: |-
+      Always run tests before pushing.
+      Use conventional commits (feat:, fix:, chore:).
+      Write all PR titles in 繁體中文.
+
+    orchestratorRules: |-
+      1. 每個 issue 只負責明確的一組檔案。
+      2. 平行執行的 issues 之間不能有任何重疊的檔案。
+
+    reactions:
+      spec-phase-complete:
+        auto: true
+        action: command
+        command: "node ~/projects/agent-orchestrator/scripts/gather-specs.mjs --repo-path ~/projects/agent-orchestrator-demo --sessions-dir ~/.agent-orchestrator/123544a899d4/sessions && node ~/projects/agent-orchestrator/scripts/conflict-detection.mjs --specs-dir ~/projects/agent-orchestrator-demo/specs --tasks-dir ~/projects/agent-orchestrator-demo/.claude/tasks --project paradise-soft && (pgrep -f 'wave-monitor.mjs.*paradise-soft' >/dev/null || nohup node ~/projects/agent-orchestrator/scripts/wave-monitor.mjs --ao-project paradise-soft --repo-path ~/projects/agent-orchestrator-demo --tasks-dir ~/projects/agent-orchestrator-demo/.claude/tasks --sessions-dir ~/.agent-orchestrator/123544a899d4/sessions --agent claude-code > /tmp/wave-monitor.log 2>&1 &)"
+
+    tracker:
+      plugin: jira
+      baseUrl: https://jira.yourcompany.com
+      project: WIN
+      boardId: 359
 ```
 
-**4. 啟動**
+要掛多 project 就在 `projects:` map 多加條目，每個 project 自己有獨立的 `agentRules` / `reactions` / `tracker`。
 
-```bash
-export AO_GLOBAL_CONFIG=~/.ao/global.yaml
-ao start
-```
+### Per-dev 客製
 
-Dashboard 開 `http://localhost:3000`，左側 sidebar 會列 my-app。多 project 並存就在 `projects:` map 加更多條目。
+`agent-orchestrator.yaml` 是 commit 進 repo 的，agentRules / reactions / tracker 等商業邏輯設定 team 共享。每個 dev 自己改本機路徑（`path` / `storageKey` / 或反應命令裡的 sessions-dir）時，git status 會顯示 dirty 但不要 commit，保持本機自己一份就好。或想徹底乾淨：在另一個目錄複製一份本機 override 的 yaml，把 `AO_CONFIG_PATH` 指過去。
 
 ---
 
