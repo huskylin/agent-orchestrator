@@ -76,25 +76,25 @@
 ```mermaid
 graph TB
     subgraph Input["輸入"]
-        YAML[agent-orchestrator.yaml<br/>identity 註冊]
-        LOCAL[ao-project.yaml<br/>behavior（agentRules/reactions/tracker）]
+        YAML[agent-orchestrator.yaml<br>identity 註冊]
+        LOCAL[ao-project.yaml<br>behavior（agentRules/reactions/tracker）]
         JIRA[Jira REST API]
     end
 
     subgraph UI["觸發入口"]
-        DASH[Dashboard<br/>IssuePanel → Spec Phase 按鈕]
+        DASH[Dashboard<br>IssuePanel → Spec Phase 按鈕]
         P0[scripts/phase0-spawn-specs.mjs]
     end
 
     subgraph Pipeline["Spec-Phase Pipeline（reaction 自動串接）"]
-        GS[gather-specs.mjs<br/>收集 + 清 worktree]
-        CD[conflict-detection.mjs<br/>auto-serialise]
-        WM[wave-monitor.mjs<br/>wave-by-wave impl]
+        GS[gather-specs.mjs<br>收集 + 清 worktree]
+        CD[conflict-detection.mjs<br>auto-serialise]
+        WM[wave-monitor.mjs<br>wave-by-wave impl]
     end
 
     subgraph Core["packages/core"]
         SESSION_MGR[Session Manager]
-        LIFECYCLE[Lifecycle Manager<br/>狀態機 + Polling + Reactions<br/>+ Jira comment 同步]
+        LIFECYCLE[Lifecycle Manager<br>狀態機 + Polling + Reactions<br>+ Jira comment 同步]
     end
 
     subgraph Plugins["Plugin 插槽"]
@@ -105,7 +105,7 @@ graph TB
             OC[opencode]
         end
         subgraph Trackers["Tracker"]
-            JIRA_P[jira ★<br/>含 addComment]
+            JIRA_P[jira ★<br>含 addComment]
             GH_T[github / linear / gitlab]
         end
         subgraph Infra["Runtime / Workspace / SCM"]
@@ -122,7 +122,7 @@ graph TB
     end
 
     subgraph Storage["儲存（flat files）"]
-        FILES["~/.agent-orchestrator/{storageKey}/<br/>  sessions/<br/>  archive/"]
+        FILES["~/.agent-orchestrator/{storageKey}/<br>  sessions/<br>  archive/"]
     end
 
     YAML --> SESSION_MGR
@@ -222,26 +222,26 @@ sequenceDiagram
     Note over UI,SpecAgents: Phase 0 — Spec 產生
     UI->>Jira: 抓 Sprint issues（boardId 設定在 tracker config）
     UI->>AO: bulk spawn（sessionType=spec）×N
-    AO->>SpecAgents: 各自在 worktree 撰寫 specs/&lt;ISSUE&gt;.md，push 到 feat/&lt;ISSUE&gt;
-    Note over SpecAgents: 每份 spec 含 YAML frontmatter：<br/>files_to_touch、blocked_by
+    AO->>SpecAgents: 各自在 worktree 撰寫 specs/ISSUE.md，push 到 feat/ISSUE
+    Note over SpecAgents: 每份 spec 含 YAML frontmatter：<br>files_to_touch、blocked_by
 
     SpecAgents-->>AO: ao report completed → status=done
     AO->>Jira: [AO] ✅ Spec completed comment
     AO->>AO: 全部 spec session done → spec-phase-complete reaction 觸發
 
     Note over GS,CD: Phase 1 — 規格整合（自動）
-    AO->>GS: 收集各 worktree 的 specs/*.md 到主 repo<br/>並移除 spec worktree 釋放 feat 分支
+    AO->>GS: 收集各 worktree 的 specs/*.md 到主 repo<br>並移除 spec worktree 釋放 feat 分支
     GS->>Jira: [AO] 📋 Spec collected
     AO->>CD: 偵測 files_to_touch 重疊
-    CD->>CD: union-find 分群 + task_id 升冪排序<br/>自動注入 blocked_by → 產 wave plan
+    CD->>CD: union-find 分群 + task_id 升冪排序<br>自動注入 blocked_by → 產 wave plan
     CD->>Jira: [AO] 📋 Queued in Wave N（含 auto-serialised chain 資訊）
 
     Note over WM,ImplAgents: Phase 2 — Wave-by-wave 實作（自動）
-    AO->>WM: 背景啟動 wave-monitor（reaction 內 nohup &）
+    AO->>WM: 背景啟動 wave-monitor（reaction 內 nohup ...）
     loop 每個 Wave
         WM->>WM: 讀 .claude/tasks/*.json，確認上一 wave 全 merged
-        WM->>AO: ao spawn &lt;ISSUE&gt; --session-type impl --prompt '依照 specs/&lt;ISSUE&gt;.md 實作...'
-        AO->>ImplAgents: 在 feat/&lt;ISSUE&gt; worktree（含 spec 檔）開始 impl
+        WM->>AO: ao spawn ISSUE --session-type impl --prompt '依照 specs/ISSUE.md 實作...'
+        AO->>ImplAgents: 在 feat/ISSUE worktree（含 spec 檔）開始 impl
         AO->>Jira: [AO] 🔧 Implementation started
         ImplAgents->>AO: PR opened / CI / review / merged
         AO->>Jira: 對應 comment（🔗 PR opened / ❌ CI failing / ✅ Merged）
