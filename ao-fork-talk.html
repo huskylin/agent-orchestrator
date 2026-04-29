@@ -1,0 +1,1442 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Orchestrator — Jira × Spec-Phase Pipeline</title>
+
+  <style>
+    /* =========================================================
+   VIEWPORT FITTING — viewport-base.css inlined
+   ========================================================= */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      overflow-x: hidden;
+    }
+
+    html {
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+    }
+
+    .slide {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    :root {
+      --title-size: clamp(1.6rem, 4.5vw, 3.4rem);
+      --h2-size: clamp(1.25rem, 3.2vw, 2.2rem);
+      --h3-size: clamp(1rem, 2vw, 1.4rem);
+      --body-size: clamp(0.9rem, 1.3vw, 1.1rem);
+      --small-size: clamp(0.7rem, 1vw, 0.85rem);
+      --slide-padding: clamp(1.5rem, 4vw, 4rem);
+    }
+
+    img,
+    .image-container {
+      max-width: 100%;
+      max-height: min(50vh, 400px);
+      object-fit: contain;
+    }
+
+    @media (max-height: 700px) {
+      :root {
+        --slide-padding: clamp(0.75rem, 3vw, 2rem);
+        --title-size: clamp(1.3rem, 4vw, 2.4rem);
+        --h2-size: clamp(1.05rem, 2.8vw, 1.7rem);
+        --body-size: clamp(0.82rem, 1.15vw, 1rem);
+      }
+    }
+
+    @media (max-height: 600px) {
+      :root {
+        --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+        --title-size: clamp(1.15rem, 3.6vw, 2rem);
+        --h2-size: clamp(0.95rem, 2.4vw, 1.5rem);
+        --body-size: clamp(0.76rem, 1.05vw, 0.95rem);
+      }
+
+      .nav-dots {
+        display: none;
+      }
+    }
+
+    @media (max-height: 500px) {
+      :root {
+        --slide-padding: clamp(0.4rem, 2vw, 1rem);
+        --title-size: clamp(1rem, 3.2vw, 1.5rem);
+        --body-size: clamp(0.7rem, 1vw, 0.85rem);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+      }
+
+      html {
+        scroll-behavior: auto;
+      }
+    }
+
+    /* =========================================================
+   THEME — neutral, clear, system fonts
+   ========================================================= */
+    :root {
+      --bg: #fafaf8;
+      /* off-white page */
+      --bg-2: #f1eee7;
+      /* slightly darker for chrome / boxes */
+      --ink: #1a1a1a;
+      /* primary text */
+      --ink-soft: #4a4540;
+      /* secondary text */
+      --ink-mute: #8a8278;
+      /* meta text */
+      --rule: #d8d2c4;
+      /* hairline divider */
+      --accent: #b03030;
+      /* muted red — used for emphasis only */
+
+      --font-sans: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", "PingFang TC", "Noto Sans TC", sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Source Code Pro", monospace;
+
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: var(--body-size);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .slide>* {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* =========================================================
+   COMMON CHROME — masthead / colophon
+   ========================================================= */
+    .masthead,
+    .colophon {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-sans);
+      font-size: clamp(0.66rem, 0.9vw, 0.78rem);
+      letter-spacing: 0.06em;
+      color: var(--ink-mute);
+      padding: clamp(1rem, 2.5vw, 1.8rem) clamp(1.5rem, 4vw, 4rem);
+    }
+
+    .masthead {
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .colophon {
+      border-top: 1px solid var(--rule);
+    }
+
+    .body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: clamp(1rem, 2.8vw, 2.2rem) clamp(1.5rem, 4vw, 4rem);
+      min-height: 0;
+    }
+
+    /* =========================================================
+   TYPOGRAPHY
+   ========================================================= */
+    .eyebrow {
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: clamp(0.74rem, 1vw, 0.88rem);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-mute);
+      margin-bottom: clamp(0.4rem, 0.8vh, 0.7rem);
+    }
+
+    .h-display {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: var(--title-size);
+      line-height: 1.1;
+      letter-spacing: -0.015em;
+    }
+
+    .h-section {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: var(--h2-size);
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      margin-bottom: clamp(0.5rem, 1vh, 0.85rem);
+    }
+
+    .lede-text {
+      font-family: var(--font-sans);
+      font-weight: 400;
+      font-size: var(--body-size);
+      line-height: 1.55;
+      color: var(--ink-soft);
+      max-width: 64ch;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.9em;
+      background: var(--bg-2);
+      padding: 0.05em 0.32em;
+      border-radius: 2px;
+      color: var(--ink);
+    }
+
+    /* =========================================================
+   ASCII DIAGRAMS — monospace text drawings
+   ========================================================= */
+    .diagram {
+      font-family: var(--font-mono);
+      font-size: clamp(0.62rem, 0.95vw, 0.92rem);
+      line-height: 1.5;
+      color: var(--ink);
+      white-space: pre;
+      overflow: auto;
+      padding: clamp(0.6rem, 1.5vw, 1rem) clamp(0.6rem, 1.5vw, 1rem);
+      background: var(--bg-2);
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      flex: 1;
+      display: block;
+      min-height: 0;
+      scrollbar-width: thin;
+    }
+
+    .diagram b {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* =========================================================
+   STAGGERED REVEAL
+   ========================================================= */
+    .reveal {
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.55s var(--ease), transform 0.55s var(--ease);
+    }
+
+    .slide.visible .reveal {
+      opacity: 1;
+      transform: none;
+    }
+
+    .slide.visible .reveal:nth-child(1) {
+      transition-delay: 0.05s;
+    }
+
+    .slide.visible .reveal:nth-child(2) {
+      transition-delay: 0.15s;
+    }
+
+    .slide.visible .reveal:nth-child(3) {
+      transition-delay: 0.25s;
+    }
+
+    .slide.visible .reveal:nth-child(4) {
+      transition-delay: 0.35s;
+    }
+
+    .slide.visible .reveal:nth-child(5) {
+      transition-delay: 0.45s;
+    }
+
+    .slide.visible .reveal:nth-child(6) {
+      transition-delay: 0.55s;
+    }
+
+    .slide.visible .reveal:nth-child(7) {
+      transition-delay: 0.65s;
+    }
+
+    /* =========================================================
+   PROGRESS BAR + NAV DOTS
+   ========================================================= */
+    .progress-bar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 2px;
+      background: var(--accent);
+      width: 0%;
+      z-index: 1000;
+      transition: width 0.2s ease-out;
+    }
+
+    .nav-dots {
+      position: fixed;
+      right: clamp(1rem, 2.5vw, 2rem);
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.4rem, 1vh, 0.7rem);
+      z-index: 999;
+    }
+
+    .nav-dots button {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1px solid var(--ink-mute);
+      background: transparent;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s, border-color 0.2s;
+      padding: 0;
+    }
+
+    .nav-dots button:hover {
+      transform: scale(1.3);
+    }
+
+    .nav-dots button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .keyboard-hint {
+      position: fixed;
+      left: clamp(1rem, 2.5vw, 2rem);
+      bottom: clamp(0.8rem, 2vw, 1.2rem);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+      color: var(--ink-mute);
+      z-index: 999;
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    /* =========================================================
+   SLIDE 1 — TITLE
+   ========================================================= */
+    .slide-1 .body {
+      justify-content: center;
+    }
+
+    .slide-1 .title {
+      font-size: clamp(1.9rem, 5.5vw, 4.2rem);
+      letter-spacing: -0.02em;
+      margin-bottom: clamp(0.5rem, 1.2vh, 1rem);
+    }
+
+    .slide-1 .subtitle {
+      font-family: var(--font-sans);
+      font-weight: 400;
+      font-size: clamp(1rem, 2vw, 1.4rem);
+      color: var(--ink-soft);
+      margin-bottom: clamp(0.8rem, 2vh, 1.4rem);
+    }
+
+    .slide-1 .meta-row {
+      font-family: var(--font-mono);
+      font-size: clamp(0.75rem, 1vw, 0.9rem);
+      color: var(--ink-mute);
+      display: flex;
+      gap: clamp(0.8rem, 2vw, 1.6rem);
+      flex-wrap: wrap;
+      border-top: 1px solid var(--rule);
+      padding-top: clamp(0.7rem, 1.5vh, 1rem);
+    }
+
+    .slide-1 .meta-row span::before {
+      content: '· ';
+      color: var(--ink-mute);
+    }
+
+    /* =========================================================
+   SLIDE 2 — Pain points
+   ========================================================= */
+    .slide-2 .body {
+      gap: clamp(0.6rem, 1.5vh, 1rem);
+    }
+
+    .pain-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.5rem, 1.2vh, 0.85rem);
+    }
+
+    .pain-list li {
+      display: grid;
+      grid-template-columns: clamp(1.6rem, 3vw, 2.2rem) 1fr;
+      gap: clamp(0.5rem, 1vw, 0.9rem);
+      align-items: baseline;
+      padding-bottom: clamp(0.4rem, 1vh, 0.6rem);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .pain-list li:last-child {
+      border-bottom: none;
+    }
+
+    .pain-list .num {
+      font-family: var(--font-mono);
+      font-weight: 500;
+      font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+      color: var(--ink-mute);
+    }
+
+    .pain-list .pain-title {
+      display: block;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+      color: var(--ink);
+      margin-bottom: 0.15em;
+    }
+
+    .pain-list .pain-desc {
+      display: block;
+      font-size: clamp(0.82rem, 1.15vw, 1rem);
+      color: var(--ink-soft);
+      line-height: 1.45;
+    }
+
+    /* =========================================================
+   DIAGRAM SLIDES (3 / 4 / 6)
+   ========================================================= */
+    .diagram-slide .body {
+      gap: clamp(0.5rem, 1vh, 0.85rem);
+    }
+
+    .diagram-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 1rem;
+      padding-bottom: clamp(0.3rem, 0.8vh, 0.5rem);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .diagram-header h2 {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: var(--h2-size);
+    }
+
+    .diagram-header .caption {
+      font-size: clamp(0.72rem, 1vw, 0.85rem);
+      color: var(--ink-mute);
+      text-align: right;
+      max-width: 48ch;
+      line-height: 1.45;
+    }
+
+    /* =========================================================
+   SLIDE 5 — Conflict serialise
+   ========================================================= */
+    .slide-5 .body {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: clamp(1.2rem, 3vw, 2.5rem);
+      align-items: center;
+    }
+
+    .slide-5 .lhs h2 {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: var(--h2-size);
+      margin-bottom: 0.55rem;
+    }
+
+    .slide-5 .lhs .lede-text {
+      margin-bottom: clamp(0.5rem, 1.2vh, 0.85rem);
+    }
+
+    .note {
+      border-left: 3px solid var(--accent);
+      background: var(--bg-2);
+      padding: clamp(0.5rem, 1.2vh, 0.75rem) clamp(0.7rem, 1.8vw, 1.1rem);
+      font-size: clamp(0.78rem, 1.1vw, 0.95rem);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+
+    .note strong {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .process-list {
+      list-style: none;
+      counter-reset: step;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.4rem, 1vh, 0.7rem);
+    }
+
+    .process-list li {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: clamp(1.8rem, 3vw, 2.4rem) 1fr;
+      gap: clamp(0.4rem, 1vw, 0.75rem);
+      align-items: baseline;
+      padding-bottom: clamp(0.35rem, 0.9vh, 0.5rem);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .process-list li::before {
+      content: counter(step, decimal-leading-zero);
+      font-family: var(--font-mono);
+      font-weight: 500;
+      font-size: clamp(0.9rem, 1.3vw, 1.05rem);
+      color: var(--ink-mute);
+    }
+
+    .process-list li:last-child {
+      border-bottom: none;
+    }
+
+    @media (max-width: 850px) {
+      .slide-5 .body {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+    }
+
+    /* =========================================================
+   SLIDE 6 — State Machine + Jira Comment Chain
+   ========================================================= */
+    .slide-6 .body {
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.5rem, 1vh, 0.85rem);
+      min-height: 0;
+    }
+
+    .slide-6 .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+      gap: clamp(1rem, 2.5vw, 2rem);
+      flex: 1;
+      min-height: 0;
+    }
+
+    .slide-6 .col {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .slide-6 h3 {
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: clamp(0.95rem, 1.5vw, 1.2rem);
+      margin-bottom: clamp(0.3rem, 0.8vh, 0.5rem);
+      padding-bottom: clamp(0.25rem, 0.6vh, 0.4rem);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .jira-thread {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.3rem, 0.8vh, 0.45rem);
+      font-family: var(--font-mono);
+      font-size: clamp(0.72rem, 1vw, 0.88rem);
+      line-height: 1.4;
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    .jira-thread .item {
+      display: grid;
+      grid-template-columns: clamp(1.3rem, 2.2vw, 1.7rem) 1fr;
+      gap: clamp(0.3rem, 0.7vw, 0.5rem);
+      padding-bottom: clamp(0.25rem, 0.7vh, 0.4rem);
+      border-bottom: 1px dashed var(--rule);
+    }
+
+    .jira-thread .item:last-child {
+      border-bottom: none;
+    }
+
+    .jira-thread .icon {
+      text-align: left;
+    }
+
+    .jira-thread .stage {
+      font-family: var(--font-sans);
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .jira-thread .meta {
+      font-family: var(--font-mono);
+      color: var(--ink-mute);
+      font-size: 0.92em;
+    }
+
+    @media (max-width: 900px) {
+      .slide-6 .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* =========================================================
+   SLIDE 7 — Quick Start
+   ========================================================= */
+    .slide-7 .body {
+      display: grid;
+      grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+      gap: clamp(1.2rem, 3vw, 2.5rem);
+      align-items: center;
+    }
+
+    .slide-7 .lhs h2 {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: var(--h2-size);
+    }
+
+    .slide-7 .lhs .lede-text {
+      margin-top: clamp(0.4rem, 1vh, 0.7rem);
+    }
+
+    .code-block {
+      background: var(--bg-2);
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      padding: clamp(0.7rem, 1.8vw, 1.2rem) clamp(0.9rem, 2.2vw, 1.6rem);
+      font-family: var(--font-mono);
+      font-size: clamp(0.7rem, 1vw, 0.9rem);
+      line-height: 1.55;
+      color: var(--ink);
+      overflow: auto;
+      max-height: min(72vh, 600px);
+      scrollbar-width: thin;
+    }
+
+    .code-block .comment {
+      color: var(--ink-mute);
+    }
+
+    .code-block .prompt {
+      color: var(--accent);
+      user-select: none;
+    }
+
+    .code-block .kw {
+      color: var(--accent);
+    }
+
+    @media (max-width: 850px) {
+      .slide-7 .body {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+    }
+
+    /* =========================================================
+   SLIDE 8 — Fork additions
+   ========================================================= */
+    .slide-8 .body {
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.5rem, 1.2vh, 0.9rem);
+    }
+
+    .changes-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: clamp(0.5rem, 1.2vw, 1rem);
+      min-height: 0;
+    }
+
+    .change-card {
+      border: 1px solid var(--rule);
+      background: var(--bg);
+      padding: clamp(0.6rem, 1.4vw, 1rem) clamp(0.75rem, 1.8vw, 1.2rem);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .change-card .tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: clamp(0.65rem, 0.9vw, 0.78rem);
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      margin-bottom: clamp(0.25rem, 0.7vh, 0.4rem);
+    }
+
+    .change-card h3 {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: clamp(0.92rem, 1.4vw, 1.18rem);
+      margin-bottom: clamp(0.3rem, 0.8vh, 0.5rem);
+    }
+
+    .change-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.18rem, 0.5vh, 0.3rem);
+      font-size: clamp(0.78rem, 1.05vw, 0.95rem);
+      line-height: 1.42;
+      color: var(--ink-soft);
+      overflow: hidden;
+    }
+
+    .change-card ul li::before {
+      content: '— ';
+      color: var(--ink-mute);
+    }
+
+    @media (max-width: 850px) {
+      .changes-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+      }
+    }
+
+    /* =========================================================
+   SLIDE 9 — Next Phase
+   ========================================================= */
+    .slide-9 .body {
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.5rem, 1.2vh, 1rem);
+    }
+
+    .next-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(0.6rem, 1.8vw, 1.3rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .next-card {
+      display: flex;
+      flex-direction: column;
+      padding-top: clamp(0.5rem, 1.2vh, 0.85rem);
+      border-top: 2px solid var(--ink);
+      min-height: 0;
+    }
+
+    .next-card .num-mark {
+      font-family: var(--font-mono);
+      font-weight: 500;
+      font-size: clamp(0.8rem, 1.1vw, 0.95rem);
+      letter-spacing: 0.06em;
+      color: var(--ink-mute);
+      margin-bottom: clamp(0.25rem, 0.7vh, 0.4rem);
+    }
+
+    .next-card .label {
+      font-family: var(--font-mono);
+      font-size: clamp(0.7rem, 0.95vw, 0.82rem);
+      color: var(--accent);
+      margin-bottom: clamp(0.25rem, 0.7vh, 0.4rem);
+    }
+
+    .next-card h3 {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: clamp(0.95rem, 1.5vw, 1.25rem);
+      line-height: 1.2;
+      margin-bottom: clamp(0.3rem, 0.8vh, 0.5rem);
+      color: var(--ink);
+    }
+
+    .next-card p {
+      font-size: clamp(0.8rem, 1.1vw, 0.98rem);
+      color: var(--ink-soft);
+      line-height: 1.45;
+    }
+
+    .next-card p strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+      .next-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="progress-bar" id="progressBar"></div>
+  <nav class="nav-dots" id="navDots" aria-label="slide navigation"></nav>
+  <div class="keyboard-hint">↑ ↓ Space Click</div>
+
+  <!-- =========================================================
+     SLIDE 1 — TITLE
+     ========================================================= -->
+  <section class="slide slide-1" data-title="Title">
+    <header class="masthead">
+      <span>Agent Orchestrator — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <p class="eyebrow reveal">Internal · Engineering</p>
+      <h1 class="h-display title reveal">Agent Orchestrator</h1>
+      <p class="subtitle reveal">Jira-Driven Parallel Implementation Pipeline</p>
+      <p class="lede-text reveal">以 Jira Sprint 驅動的端到端自動化 Workflow：從規格解析、衝突排解到 wave-by-wave 平行實作與發 PR。</p>
+      <p class="lede-text reveal">透過 Dashboard 一鍵觸發，從前期的解析與衝突偵測，到底層 Agent 展開實作、狀態同步 Jira，全部自動跑完。</p>
+      <div class="meta-row reveal">
+        <span>fork of ComposioHQ/agent-orchestrator</span>
+        <span>tracker-jira</span>
+        <span>spec-phase scripts</span>
+        <span>12 slides</span>
+      </div>
+    </div>
+
+    <footer class="colophon">
+      <span>1 / 12</span>
+      <span>Title</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 2 — Intro
+     ========================================================= -->
+  <section class="slide slide-2" data-title="簡介">
+    <header class="masthead">
+      <span>AO — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="reveal">
+        <p class="eyebrow">2 — 簡介</p>
+        <h2 class="h-section">什麼是 Agent Orchestrator？</h2>
+        <p class="lede-text" style="max-width: 72ch; margin-top: 1rem;">
+          Agent Orchestrator 是一個用來平行化管理多個 AI Agent 的開源調度層（Orchestration Layer）。當你有數十個 Issue 需要平行處理時，它可以自動為每個 Issue 建立獨立的工作區（Worktree）、指派 Agent 展開實作（讀程式、寫測試、發 PR），並自動處理 CI 失敗與 Review 意見的循環反饋。
+        </p>
+        <pre class="diagram reveal" style="margin-top: 1.5rem;">
+<b>Jira (team UI)</b>
+  ↓ poll (REST API, 30s interval)
+<b>Orchestrator (~300 lines)</b>
+  ├── Jira Client (~200 lines) — fetchCandidates, fetchCurrentStates, fetchTerminalIssues
+  ├── Agent Runner (~150 lines) — git worktree + claude -p + arcforge
+  └── WORKFLOW.md — YAML config + prompt template
+        ↓
+<b>Claude Code + arcforge (per-issue worktree)</b>
+  ├── arc-tdd, arc-verifying, arc-debugging
+  ├── git push + open PR
+  └── comment PR link on Jira issue
+        ↓
+<b>CI (existing pipeline)</b>
+  ├── lint + test
+  └── PR ready for human review
+        </pre>
+        <p class="lede-text" style="margin-top: 1.5rem;">
+          原版專案（Upstream）：<br>
+          <a href="https://github.com/ComposioHQ/agent-orchestrator" target="_blank"
+            style="color: var(--accent); text-decoration: underline; text-underline-offset: 4px;">https://github.com/ComposioHQ/agent-orchestrator</a>
+        </p>
+      </div>
+    </div>
+
+    <footer class="colophon">
+      <span>2 / 12</span>
+      <span>Intro</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 3 — Differences
+     ========================================================= -->
+  <section class="slide slide-3" data-title="痛點">
+    <header class="masthead">
+      <span>AO — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="reveal">
+        <p class="eyebrow">3 — 為什麼做這個修改版</p>
+        <h2 class="h-section">原版的痛點與差異</h2>
+        <p class="lede-text">在使用原版的 Agent Orchestrator 時，遇到了以下難題，因此決定做出客製化：</p>
+      </div>
+
+      <ol class="pain-list" style="margin-top: 1.2rem;">
+        <li class="reveal">
+          <span class="num">1</span>
+          <div>
+            <span class="pain-title">實作衝突難以解決</span>
+            <span class="pain-desc">不同的 Jira ticket 同時交給 Agent 實作時非常容易互相衝突（例如改到同份檔案）。</span>
+            <span class="pain-desc">光是人工 review 解衝突就會卡住，特別是遇到非本人的實作，根本不知道怎麼 merge 或誰先誰後。</span>
+          </div>
+        </li>
+        <li class="reveal">
+          <span class="num">2</span>
+          <div>
+            <span class="pain-title">額外支援 Jira 與解耦實作層</span>
+            <span class="pain-desc">修改版額外支援了以 <strong>Jira</strong> 作為 Input，並把實作層獨立抽出來變成 pipeline 的一部分，藉此建立包含自動狀態同步的
+              workflow。</span>
+          </div>
+        </li>
+      </ol>
+    </div>
+
+    <footer class="colophon">
+      <span>3 / 12</span>
+      <span>Differences</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 3 — System Architecture (text diagram)
+     ========================================================= -->
+  <section class="slide slide-3 diagram-slide" data-title="系統架構">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="diagram-header reveal">
+        <h2>3 — 系統架構</h2>
+        <span class="caption">Jira → Dashboard → Session Manager → Lifecycle Manager → Agents / Scripts；comment 鏈逆向回
+          Jira。</span>
+      </div>
+
+      <pre class="diagram reveal">
+                         <b>Jira REST API</b>
+                               │  sprint issues
+                               ▼
+                       ┌──────────────────┐
+                       │    Dashboard     │
+                       │  (Spec Phase 鈕) │
+                       └────────┬─────────┘
+                                │  bulk spawn (sessionType=spec)
+                                ▼
+                       ┌──────────────────┐         ┌─────────────────────┐
+                       │ Session Manager  │────────►│  ~/.agent-orches…/  │
+                       └────────┬─────────┘         │  sessions / archive │
+                                │                   └─────────────────────┘
+                                ▼
+                       ┌──────────────────┐
+                  ┌───►│ Lifecycle Mgr    │ ── comment 鏈 ──► <b>Jira</b>
+                  │    │ state + polling  │
+                  │    └────────┬─────────┘
+                  │             │  spawn worktree
+                  │             ▼
+                  │    ┌──────────────────┐
+                  │    │  Spec / Impl     │
+                  │    │     Agents       │
+                  │    └────────┬─────────┘
+                  │             │  spec-phase-complete (reaction)
+                  │             ▼
+                  │    ┌──────────────────────────────────────┐
+       wave spawn │    │  scripts/                            │
+        ──────────┘    │   gather-specs → conflict-detection  │
+                       │   → wave-monitor                     │
+                       └──────────────────────────────────────┘
+</pre>
+    </div>
+
+    <footer class="colophon">
+      <span>3 / 12</span>
+      <span>Architecture</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 4 — Pipeline (text-based sequence)
+     ========================================================= -->
+  <section class="slide slide-4 diagram-slide" data-title="Pipeline">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="diagram-header reveal">
+        <h2>4 — 三階段 Pipeline</h2>
+        <span class="caption">Phase 0 spec / Phase 1 整合 + 衝突偵測 / Phase 2 wave-by-wave impl，後兩段由 reaction 自動觸發。</span>
+      </div>
+
+      <pre class="diagram reveal">
+<b>Phase 0 ─ Spec 產生</b>
+─────────────────────────────────────────────────────────────
+   Dashboard       ── bulk spawn (N issues, type=spec) ──►  Spec Agents (×N)
+   Spec Agents     ── 各自寫 specs/ISSUE.md, push feat/ISSUE
+   Spec Agents     ── ao report completed ───────────────►  done state
+
+
+<b>Phase 1 ─ 規格整合（auto）</b>
+─────────────────────────────────────────────────────────────
+   spec-phase-complete reaction 觸發
+       │
+       ├─►  gather-specs.mjs       收 spec 到主 repo + 釋放 worktree
+       │
+       └─►  conflict-detection.mjs union-find → 升冪 → blocked_by 注入
+                                   ── 輸出 .claude/tasks/*.json (wave plan)
+                                   ── 輸出 specs/conflict-report.json (audit)
+
+
+<b>Phase 2 ─ Wave-by-wave 實作（auto）</b>
+─────────────────────────────────────────────────────────────
+   loop:
+       wave-monitor    ── 確認上一 wave 全 merged
+                       ── ao spawn ISSUE --session-type impl
+                       ──────────────────────────────────►  Impl Agent
+       Impl Agent      ── PR opened / CI / review / merged
+                       ──────────────────────────────────►  Lifecycle Mgr
+                       ──────────────────────────────────►  Jira comment
+</pre>
+    </div>
+
+    <footer class="colophon">
+      <span>4 / 12</span>
+      <span>Pipeline</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 5 — Conflict auto-serialise
+     ========================================================= -->
+  <section class="slide slide-5" data-title="Conflict auto-serialise">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="lhs">
+        <p class="eyebrow reveal">5 — 衝突處理</p>
+        <h2 class="reveal">Conflict 自動序列化</h2>
+        <p class="lede-text reveal">兩份 spec 的 <code>files_to_touch</code> 一旦交集，pipeline 不再 abort，會自動把它們串成單一 chain，走原本的
+          wave plan 邏輯。</p>
+
+        <div class="note reveal" style="margin-top: clamp(0.6rem, 1.5vh, 1rem);">
+          <strong>想保留平行：</strong> 把重疊檔從 spec frontmatter 拿掉即可。
+        </div>
+      </div>
+
+      <ol class="process-list">
+        <li class="reveal">
+          <span>偵測 <code>files_to_touch</code> 交集 → union-find 把所有重疊 issue 分成 connected components。</span>
+        </li>
+        <li class="reveal">
+          <span>Chain 內按 task id 升冪排序（A → B → C），自動取 issue id 數字部分。</span>
+        </li>
+        <li class="reveal">
+          <span>注入隱含 <code>blocked_by</code>（B blocked by A、C blocked by B）。</span>
+        </li>
+        <li class="reveal">
+          <span>走原本 DAG → wave plan 邏輯，輸出 <code>.claude/tasks/*.json</code>。</span>
+        </li>
+        <li class="reveal">
+          <span>互不相關的群仍可平行；<code>specs/conflict-report.json</code> 留 audit log。</span>
+        </li>
+      </ol>
+    </div>
+
+    <footer class="colophon">
+      <span>5 / 12</span>
+      <span>Algorithm</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 6 — State Machine + Jira Comment Chain
+     ========================================================= -->
+  <section class="slide slide-6 diagram-slide" data-title="State + Jira">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="diagram-header reveal">
+        <h2>6 — 狀態機與 Jira comment 同步</h2>
+        <span class="caption">每個狀態變化在 Lifecycle Manager 內 dedup（file lock + metadata），自動寫對應 comment 回 Jira。</span>
+      </div>
+
+      <div class="two-col">
+        <div class="col reveal">
+          <h3>Session 狀態機（簡化）</h3>
+          <pre class="diagram">
+[*] ──► spawning ──► working
+                         │
+                         ├──► <b>done</b>   (純 spec session)
+                         │
+                         └──► pr_open ◄──────┐
+                                  │          │
+                                  ├──► ci_failed ──push──┘
+                                  │
+                                  └──► mergeable ──► merged ──► <b>done</b> ──► [*]
+</pre>
+        </div>
+
+        <div class="col reveal">
+          <h3>Jira comment 鏈</h3>
+          <div class="jira-thread">
+            <div class="item">
+              <span class="icon">🔍</span>
+              <div><span class="stage">Spec generation started</span><br><span class="meta">session ps-N ·
+                  feat/WIN-XXXX</span></div>
+            </div>
+            <div class="item">
+              <span class="icon">✅</span>
+              <div><span class="stage">Spec completed</span><br><span class="meta">status=done</span></div>
+            </div>
+            <div class="item">
+              <span class="icon">📋</span>
+              <div><span class="stage">Spec collected</span><br><span class="meta">WIN-XXXX.md</span></div>
+            </div>
+            <div class="item">
+              <span class="icon">📋</span>
+              <div><span class="stage">Queued in Wave M</span><br><span class="meta">auto-serialised: WIN-X →
+                  WIN-Y</span></div>
+            </div>
+            <div class="item">
+              <span class="icon">🔧</span>
+              <div><span class="stage">Implementation started</span><br><span class="meta">session ps-M</span></div>
+            </div>
+            <div class="item">
+              <span class="icon">🔗</span>
+              <div><span class="stage">PR opened: #123</span></div>
+            </div>
+            <div class="item">
+              <span class="icon">✅</span>
+              <div><span class="stage">Merged</span><br><span class="meta">github.com/.../pull/123</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="colophon">
+      <span>6 / 12</span>
+      <span>State · Sync</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 7 — Quick Start
+     ========================================================= -->
+  <section class="slide slide-7" data-title="Quick Start">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="lhs">
+        <p class="eyebrow reveal">7 — 上手</p>
+        <h2 class="reveal">Quick Start</h2>
+        <p class="lede-text reveal">最少 4 步讓 dashboard 跑起來。注意：用 <code>AO_CONFIG_PATH</code>，不要用
+          <code>AO_GLOBAL_CONFIG</code>（後者會把非 identity 欄位 strip 掉）。
+        </p>
+      </div>
+
+      <pre class="code-block reveal"><span class="comment"># 1. 安裝</span>
+<span class="prompt">$</span> git clone https://github.com/huskylin/agent-orchestrator
+<span class="prompt">$</span> cd agent-orchestrator && pnpm install && pnpm build
+
+<span class="comment"># 2. Jira 認證</span>
+<span class="prompt">$</span> <span class="kw">export</span> JIRA_EMAIL=you@yourcompany.com
+<span class="prompt">$</span> <span class="kw">export</span> JIRA_TOKEN=&lt;jira-api-token&gt;
+
+<span class="comment"># 3. 指定 config 路徑</span>
+<span class="prompt">$</span> <span class="kw">echo</span> 'export AO_CONFIG_PATH="$HOME/projects/agent-orchestrator/agent-orchestrator.yaml"' &gt;&gt; ~/.zshrc
+<span class="prompt">$</span> source ~/.zshrc
+
+<span class="comment"># 4. 啟動 → http://localhost:3000</span>
+<span class="prompt">$</span> ao start</pre>
+    </div>
+
+    <footer class="colophon">
+      <span>7 / 12</span>
+      <span>Setup</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 8 — What the fork added
+     ========================================================= -->
+  <section class="slide slide-8" data-title="Fork additions">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="reveal">
+        <p class="eyebrow">8 — 與上游的差異</p>
+        <h2 class="h-section">Fork 加了什麼</h2>
+      </div>
+
+      <div class="changes-grid">
+        <article class="change-card reveal">
+          <span class="tag">[plugin]</span>
+          <h3>tracker-jira</h3>
+          <ul>
+            <li>Jira Server REST API v2，支援 Sprint 篩選</li>
+            <li><code>Tracker</code> 介面新增 <code>addComment</code></li>
+            <li>各狀態變化自動寫對應 comment 回 issue</li>
+          </ul>
+        </article>
+
+        <article class="change-card reveal">
+          <span class="tag">[core]</span>
+          <h3>Lifecycle 同步 + Dedup</h3>
+          <ul>
+            <li>PR open / merged / ci_failed 自動同步 Jira</li>
+            <li><code>trackerNotifiedStatus</code> metadata + 跨 process file lock，避免雙觸發</li>
+            <li>Spec session 用 <code>done</code> terminal state（取代 idle）</li>
+          </ul>
+        </article>
+
+        <article class="change-card reveal">
+          <span class="tag">[web · cli]</span>
+          <h3>Dashboard 改動</h3>
+          <ul>
+            <li>IssuePanel：Sprint filter + 全選 + Spec Phase 批量按鈕</li>
+            <li><code>silence-rejection</code> preload + instrumentation hook，吸 SSE controller-closed 暫態</li>
+            <li>關掉 web 端 LifecycleManager 自動 polling，CLI worker 為唯一 poller</li>
+          </ul>
+        </article>
+
+        <article class="change-card reveal">
+          <span class="tag">[scripts]</span>
+          <h3>Spec-Phase Pipeline</h3>
+          <ul>
+            <li><code>phase0-spawn-specs</code>：從 Sprint 批量產 spec session</li>
+            <li><code>gather-specs</code>：收 spec、清掉 worktree、釋放分支</li>
+            <li><code>conflict-detection</code>：union-find auto-serialise + audit log</li>
+            <li><code>wave-monitor</code>：wave-by-wave 調度 impl agent</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+
+    <footer class="colophon">
+      <span>8 / 12</span>
+      <span>Diff vs. upstream</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 9 — Next Phase 1
+     ========================================================= -->
+  <section class="slide slide-9" data-title="Roadmap (1/3)">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="lhs">
+        <p class="eyebrow reveal">9 — Next Phase (1/3)</p>
+        <h2 class="reveal">視情況平行而非一律序列化 <span
+            style="font-size:0.6em; color:var(--accent); font-family:var(--font-mono);">[conflict]</span></h2>
+        <p class="lede-text reveal" style="max-width: 80ch; margin-top: 1rem;">
+          目前 <code>files_to_touch</code> 重疊就直接 union-find chain。<strong>微衝突</strong>（同檔不同區塊、import 順序、format-only）應該讓
+          LLM 自己 rebase；只有真正語義衝突才退回序列化。<br><br>卡點：先定義「微衝突」判定（AST diff？region overlap？）。
+        </p>
+      </div>
+    </div>
+
+    <footer class="colophon">
+      <span>9 / 12</span>
+      <span>Roadmap 1/3</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 10 — Next Phase 2
+     ========================================================= -->
+  <section class="slide slide-10" data-title="Roadmap (2/3)">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="lhs">
+        <p class="eyebrow reveal">10 — Next Phase (2/3)</p>
+        <h2 class="reveal">Session-level → Issue-level <span
+            style="font-size:0.6em; color:var(--accent); font-family:var(--font-mono);">[dashboard]</span></h2>
+        <p class="lede-text reveal" style="max-width: 80ch; margin-top: 1rem;">
+          上游 kanban 是 per-session 看「卡哪一階段、要不要人工介入」。我們現況是一 issue 多 session（spec → impl，未來可能 + review/QA），這樣在 dashboard
+          上<strong>看不出 issue 整體進度</strong>。<br><br>想做 issue 主卡 + session 子節點，狀態 = 各 phase 聚合。
+        </p>
+      </div>
+    </div>
+
+    <footer class="colophon">
+      <span>10 / 12</span>
+      <span>Roadmap 2/3</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE 11 — Next Phase 3
+     ========================================================= -->
+  <section class="slide slide-11" data-title="Roadmap (3/3)">
+    <header class="masthead">
+      <span>AO Fork — Tech Sharing</span>
+      <span>2026</span>
+    </header>
+
+    <div class="body">
+      <div class="lhs">
+        <p class="eyebrow reveal">11 — Next Phase (3/3)</p>
+        <h2 class="reveal">死亡後復原 Crash-safe <span
+            style="font-size:0.6em; color:var(--accent); font-family:var(--font-mono);">[stability]</span></h2>
+        <p class="lede-text reveal" style="max-width: 80ch; margin-top: 1rem;">
+          目前 wave-monitor / next-server / spec session 死了要手動重啟。<br><br>想做 <strong>crash-safe</strong>（從
+          <code>.claude/tasks/*.json</code> + sessions metadata 重建狀態）+ watchdog 自動拉起 + worktree 殘留自動清。
+        </p>
+      </div>
+    </div>
+
+    <footer class="colophon">
+      <span>11 / 12</span>
+      <span>Roadmap 3/3</span>
+    </footer>
+  </section>
+
+  <!-- =========================================================
+     SLIDE PRESENTATION CONTROLLER
+     ========================================================= -->
+  <script>
+    class SlidePresentation {
+      constructor() {
+        this.slides = Array.from(document.querySelectorAll('.slide'));
+        this.progressBar = document.getElementById('progressBar');
+        this.navDotsContainer = document.getElementById('navDots');
+        this.currentSlide = 0;
+
+        this.setupNavDots();
+        this.setupIntersectionObserver();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupProgressTracking();
+      }
+
+      setupNavDots() {
+        // Always clear before building — re-rendering shouldn't append duplicates
+        this.navDotsContainer.innerHTML = '';
+        this.slides.forEach((slide, i) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.setAttribute('aria-label', slide.dataset.title || `Slide ${i + 1}`);
+          btn.title = slide.dataset.title || `Slide ${i + 1}`;
+          btn.addEventListener('click', () => this.goToSlide(i));
+          this.navDotsContainer.appendChild(btn);
+        });
+      }
+
+      setupIntersectionObserver() {
+        const obs = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+              entry.target.classList.add('visible');
+              this.currentSlide = this.slides.indexOf(entry.target);
+              this.updateNavDots();
+            }
+          });
+        }, { threshold: [0.5] });
+        this.slides.forEach((s) => obs.observe(s));
+      }
+
+      setupKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+          switch (e.key) {
+            case 'ArrowDown': case 'ArrowRight': case 'PageDown': case ' ':
+              e.preventDefault();
+              this.goToSlide(Math.min(this.currentSlide + 1, this.slides.length - 1));
+              break;
+            case 'ArrowUp': case 'ArrowLeft': case 'PageUp':
+              e.preventDefault();
+              this.goToSlide(Math.max(this.currentSlide - 1, 0));
+              break;
+            case 'Home': e.preventDefault(); this.goToSlide(0); break;
+            case 'End': e.preventDefault(); this.goToSlide(this.slides.length - 1); break;
+          }
+        });
+      }
+
+      setupTouchNav() {
+        let touchStartY = 0;
+        document.addEventListener('touchstart', (e) => { touchStartY = e.touches[0].clientY; }, { passive: true });
+        document.addEventListener('touchend', (e) => {
+          const dy = touchStartY - e.changedTouches[0].clientY;
+          if (Math.abs(dy) < 50) return;
+          if (dy > 0) this.goToSlide(Math.min(this.currentSlide + 1, this.slides.length - 1));
+          else this.goToSlide(Math.max(this.currentSlide - 1, 0));
+        }, { passive: true });
+      }
+
+      setupProgressTracking() {
+        document.addEventListener('scroll', () => {
+          const max = document.documentElement.scrollHeight - window.innerHeight;
+          const pct = max > 0 ? (window.scrollY / max) * 100 : 0;
+          this.progressBar.style.width = pct + '%';
+        }, { passive: true });
+      }
+
+      goToSlide(i) { this.slides[i].scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+
+      updateNavDots() {
+        Array.from(this.navDotsContainer.children).forEach((btn, i) => {
+          btn.classList.toggle('active', i === this.currentSlide);
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const app = new SlidePresentation();
+      if (app.slides[0]) {
+        app.slides[0].classList.add('visible');
+        app.updateNavDots();
+      }
+    });
+  </script>
+
+</body>
+
+</html>
