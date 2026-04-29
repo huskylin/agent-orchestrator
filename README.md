@@ -75,69 +75,43 @@
 
 ```mermaid
 graph TB
-    subgraph Input["輸入"]
-        YAML[agent-orchestrator.yaml<br>identity 註冊]
-        LOCAL[ao-project.yaml<br>behavior（agentRules/reactions/tracker）]
-        JIRA[Jira REST API]
-    end
+    YAML[agent-orchestrator.yaml<br>identity 註冊]
+    LOCAL[ao-project.yaml<br>behavior agentRules reactions tracker]
+    JIRA[Jira REST API]
 
-    subgraph UI["觸發入口"]
-        DASH[Dashboard<br>IssuePanel → Spec Phase 按鈕]
-        P0[scripts/phase0-spawn-specs.mjs]
-    end
+    DASH[Dashboard IssuePanel<br>Spec Phase 按鈕]
+    P0[scripts/phase0-spawn-specs.mjs]
 
-    subgraph Pipeline["Spec-Phase Pipeline（reaction 自動串接）"]
-        GS[gather-specs.mjs<br>收集 + 清 worktree]
-        CD[conflict-detection.mjs<br>auto-serialise]
-        WM[wave-monitor.mjs<br>wave-by-wave impl]
-    end
+    GS[gather-specs.mjs<br>收集 + 清 worktree]
+    CD[conflict-detection.mjs<br>auto-serialise]
+    WM[wave-monitor.mjs<br>wave-by-wave impl]
 
-    subgraph Core["packages/core"]
-        SESSION_MGR[Session Manager]
-        LIFECYCLE[Lifecycle Manager<br>狀態機 + Polling + Reactions<br>+ Jira comment 同步]
-    end
+    SESSION_MGR[Session Manager]
+    LIFECYCLE[Lifecycle Manager<br>狀態機 + Polling + Reactions<br>+ Jira comment 同步]
 
-    subgraph Plugins["Plugin 插槽"]
-        direction LR
-        subgraph Agents["Agent"]
-            CC[claude-code]
-            CODEX[codex]
-            OC[opencode]
-        end
-        subgraph Trackers["Tracker"]
-            JIRA_P[jira ★<br>含 addComment]
-            GH_T[github / linear / gitlab]
-        end
-        subgraph Infra["Runtime / Workspace / SCM"]
-            RT[tmux]
-            WS[worktree]
-            SCM[github / gitlab]
-        end
-    end
+    AGENTS[Agent plugins<br>claude-code / codex / opencode]
+    TRACKERS[Tracker plugins<br>jira / github / linear / gitlab]
+    INFRA[Runtime / Workspace / SCM<br>tmux / worktree / github]
 
-    subgraph Web["packages/web — Dashboard"]
-        NEXTJS[Next.js 15]
-        SSE[SSE 即時更新]
-        XTERM[xterm.js terminal]
-    end
-
-    subgraph Storage["儲存（flat files）"]
-        FILES["~/.agent-orchestrator/{storageKey}/<br>  sessions/<br>  archive/"]
-    end
+    WEB[packages/web Dashboard<br>Next.js 15 + SSE + xterm.js]
+    STORAGE[~/.agent-orchestrator/storageKey/<br>sessions/ archive/]
 
     YAML --> SESSION_MGR
     LOCAL --> SESSION_MGR
     JIRA --> P0
     JIRA --> DASH
-    DASH -->|/api/spawn sessionType=spec| SESSION_MGR
+    DASH -->|/api/spawn| SESSION_MGR
     P0 -->|ao spawn| SESSION_MGR
     SESSION_MGR --> LIFECYCLE
-    LIFECYCLE -->|spec-phase-complete reaction| Pipeline
-    Pipeline -->|ao spawn impl| SESSION_MGR
-    LIFECYCLE --> Plugins
-    LIFECYCLE -->|addComment| JIRA_P
-    SESSION_MGR --> Storage
-    LIFECYCLE -->|SSE events| Web
+    LIFECYCLE -->|spec-phase-complete| GS
+    GS --> CD
+    CD --> WM
+    WM -->|ao spawn impl| SESSION_MGR
+    LIFECYCLE --> AGENTS
+    LIFECYCLE --> INFRA
+    LIFECYCLE -->|addComment| TRACKERS
+    SESSION_MGR --> STORAGE
+    LIFECYCLE -->|SSE events| WEB
 ```
 
 ---
