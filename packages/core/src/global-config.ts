@@ -133,12 +133,7 @@ const GLOBAL_PROJECT_ENTRY_FIELDS = new Set([
   "sessionPrefix",
 ]);
 
-const LOCAL_CONFIG_FILENAMES = [
-  "ao-project.yaml",
-  "ao-project.yml",
-  "agent-orchestrator.yaml",
-  "agent-orchestrator.yml",
-] as const;
+const LOCAL_CONFIG_FILENAMES = ["agent-orchestrator.yaml", "agent-orchestrator.yml"] as const;
 const LOCAL_IDENTITY_FIELDS = new Set(["repo", "defaultBranch", "originUrl", "projectId", "path", "storageKey"]);
 
 export const GlobalProjectEntrySchema = z.object({

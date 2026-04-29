@@ -23,7 +23,6 @@
 | `types.ts` | `SessionSpawnConfig` / `SessionMetadata` 新增 `sessionType` 欄位；`ReactionConfig.action` 新增 `"command"` 類型；`Tracker` 介面新增 `addComment?` |
 | `config.ts` | Zod schema 同步 `"command"` action；`repo` 接受 string 或 `{owner,name,platform,originUrl}` object |
 | `metadata.ts` | 將 `sessionType` 寫入 session flat-file metadata |
-| `global-config.ts` | `LOCAL_CONFIG_FILENAMES` 加入 `ao-project.yaml` 作為 local behavior config 檔名 |
 | `agent-report.ts` | `completed` 從 `idle` 改為 `done`（terminal state，才會觸發 spec-phase-complete reaction） |
 | `session-manager.ts` | spawn 時依 `sessionType` 寫 phase comment（🔍 Spec / 🔧 Impl）回 Jira |
 | `lifecycle-manager.ts` | PR open / merged / ci_failed / changes_requested / done 自動同步 comment 到 Jira；以 `trackerNotifiedStatus` metadata + 跨 process file lock 做 dedup；`spec-phase-complete` reaction 從 project-level 找；orchestrator 排除在 active sessions 計算外 |
@@ -55,7 +54,6 @@
 
 | 路徑 | 說明 |
 |------|------|
-| `ao-project.yaml`（target project 內） | local behavior config 檔名 — `agentRules` / `reactions` / `tracker` 等住在 target project 的 repo 裡 |
 | `prompts/spec-agent.md` | Spec agent 的 system prompt，被 `phase0-spawn-specs.mjs` 與 `/api/spawn`（spec mode）自動載入 |
 | `packages/web/src/instrumentation.ts` | Next.js instrumentation hook |
 | `packages/web/server/silence-rejection.ts` | next 子程序的 preload script |
@@ -75,8 +73,8 @@
 
 ```mermaid
 graph TB
-    YAML["agent-orchestrator.yaml<br>identity 註冊"]
-    LOCAL["ao-project.yaml<br>behavior agentRules reactions tracker"]
+    YAML["Global yaml<br>AO_GLOBAL_CONFIG<br>identity 註冊"]
+    LOCAL["target project /agent-orchestrator.yaml<br>behavior agentRules reactions tracker"]
     JIRA["Jira REST API"]
 
     DASH["Dashboard IssuePanel<br>Spec Phase 按鈕"]
@@ -120,12 +118,12 @@ graph TB
 
 AO 是個工具，被 orchestrate 的 project 是另一個 git repo（你實際要做事的程式碼）。配置分兩層、住在不同目錄：
 
-| 檔案 | 角色 | 放在哪 | 內容 |
-|------|------|--------|------|
-| **Global registry** | identity / 註冊 | 任意路徑（用 `AO_GLOBAL_CONFIG` 指向，例如 `~/.ao/global.yaml`） | `port`、`defaults`、`projects` map（每個 project 的 `path` / `repo` / `storageKey` / `displayName` / `sessionPrefix`） |
-| **Local behavior** | 行為規則 | `<project.path>/ao-project.yaml`（或 `agent-orchestrator.yaml` 平坦格式） | `agentRules`、`orchestratorRules`、`reactions`、`tracker` |
+| 角色 | 放在哪 | 內容 |
+|------|--------|------|
+| **Global registry** | 任意路徑（檔名隨意，用 `AO_GLOBAL_CONFIG` 環境變數指向，例如 `~/.ao/global.yaml`） | `port`、`defaults`、`projects` map（每個 project 的 `path` / `repo` / `storageKey` / `displayName` / `sessionPrefix`） |
+| **Local behavior** | `<project.path>/agent-orchestrator.yaml`（target project 目錄底下，flat 格式） | `agentRules`、`orchestratorRules`、`reactions`、`tracker` |
 
-Global yaml 嚴格 schema 驗證，**只接受 identity 欄位**；誤把 `agentRules` 寫進去會在啟動時被 strip 掉並 log `[ao] stripped N legacy project registry fields`。Behavior 設定永遠放在 target project 的 `ao-project.yaml`，跟著該 repo 一起 commit。
+Global yaml 嚴格 schema 驗證，**只接受 identity 欄位**；誤把 `agentRules` 寫進去會在啟動時被 strip 掉並 log `[ao] stripped N legacy project registry fields`。Behavior 設定永遠放在 target project 的 `agent-orchestrator.yaml`，跟著該 repo 一起 commit。
 
 ### 加一個新 project
 
@@ -138,10 +136,10 @@ cd ~/projects/my-app
 git remote -v   # 確認有 origin（指向 GitHub / GitLab）
 ```
 
-**2. 在 target project 加 `ao-project.yaml`（可 commit 進該 repo）**
+**2. 在 target project 加 `agent-orchestrator.yaml`（可 commit 進該 repo）**
 
 ```yaml
-# ~/projects/my-app/ao-project.yaml
+# ~/projects/my-app/agent-orchestrator.yaml
 agentRules: |-
   Always run tests before pushing.
   Use conventional commits (feat:, fix:, chore:).
@@ -243,7 +241,7 @@ stateDiagram-v2
     done --> [*]
 ```
 
-自動 Reactions（可在 `ao-project.yaml` 的 `reactions:` 區塊覆寫）：
+自動 Reactions（可在 `agent-orchestrator.yaml` 的 `reactions:` 區塊覆寫）：
 
 | 事件 | 預設行為 |
 |------|---------|
@@ -316,7 +314,7 @@ sequenceDiagram
 
 ### 設定
 
-把上面 [Project 設置](#project-設置) 段落的 `ao-project.yaml` 範例放進你的 target project 即可。範例裡的路徑要對應到：
+把上面 [Project 設置](#project-設置) 段落的 `agent-orchestrator.yaml` 範例放進你的 target project 即可。範例裡的路徑要對應到：
 
 | 變數 | 你要填什麼 |
 |------|-----------|
@@ -396,7 +394,7 @@ nohup node scripts/wave-monitor.mjs \
 - 處理：`git -C <repo> worktree remove --force <wt>` 後重跑 wave-monitor。
 
 **`No projects configured. Add a project to agent-orchestrator.yaml.`**
-- AO 的新版會把 global yaml 裡非 identity 的欄位（agentRules、tracker 等）自動 strip 掉。如果你發現 yaml 看起來「自己改了」，那是預期行為。Behavior 欄位請放 `ao-project.yaml`。
+- AO 的新版會把 global yaml 裡非 identity 的欄位（agentRules、tracker 等）自動 strip 掉。如果你發現 yaml 看起來「自己改了」，那是預期行為。Behavior 欄位請放 `agent-orchestrator.yaml`。
 
 **Dashboard 顯示 `You are offline`**
 - 通常是 `next-server` 程序倒了。檢查 `lsof -ti :3000`、看 `/tmp/ao-server.log` 有沒有 `unhandledRejection`。Fork 已加 `silence-rejection.ts` preload 跟 instrumentation hook，正常情況下 SSE controller-closed 暫態錯誤不會拖垮 next。
@@ -424,7 +422,7 @@ pnpm typecheck               # 全套型別檢查
 | `packages/web/server/silence-rejection.ts` | next 子程序 preload |
 | `scripts/` | Spec-Phase Pipeline 腳本（gather / conflict / wave-monitor / phase0） |
 | `prompts/spec-agent.md` | Spec agent system prompt |
-| `ao-project.yaml` | local behavior config 檔名（住在 target project 目錄底下） |
+| `agent-orchestrator.yaml` | local behavior config 檔名（住在 target project 目錄底下） |
 
 ---
 
